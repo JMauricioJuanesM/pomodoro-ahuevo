@@ -1,0 +1,19 @@
+{
+  "_comentario": "Horario de ejemplo. Copia este archivo a ~/.config/pomodoro-ahuevo/defaults.json y ponle tu horario: es el que restaura el botón «Restaurar mi horario original» y el que se usa la primera vez. Días: 0 = lunes … 6 = domingo. Horas: 0-23. Tipos: trabajo, enfocado, descanso, libre.",
+  "activities": {
+    "trabajo": {"label": "💻 TRABAJO", "color": "#00ffff", "kind": "trabajo"},
+    "reunion": {"label": "📞 REUNIÓN", "color": "#9900ff", "kind": "enfocado"},
+    "comer": {"label": "🍽 COMER", "color": "#ffff00", "kind": "descanso"},
+    "ejercicio": {"label": "🏃 EJERCICIO", "color": "#46bdc6", "kind": "libre"},
+    "libre": {"label": "LIBRE", "color": "#00ff00", "kind": "libre"}
+  },
+  "schedule": {
+    "0": {"7": "ejercicio", "9": "trabajo", "10": "reunion", "11": "trabajo", "12": "trabajo", "13": "trabajo", "14": "comer", "15": "trabajo", "16": "trabajo", "17": "trabajo", "18": "libre"},
+    "1": {"7": "ejercicio", "9": "trabajo", "10": "trabajo", "11": "trabajo", "12": "trabajo", "13": "trabajo", "14": "comer", "15": "trabajo", "16": "trabajo", "17": "trabajo", "18": "libre"},
+    "2": {"7": "ejercicio", "9": "trabajo", "10": "reunion", "11": "trabajo", "12": "trabajo", "13": "trabajo", "14": "comer", "15": "trabajo", "16": "trabajo", "17": "trabajo", "18": "libre"},
+    "3": {"7": "ejercicio", "9": "trabajo", "10": "trabajo", "11": "trabajo", "12": "trabajo", "13": "trabajo", "14": "comer", "15": "trabajo", "16": "trabajo", "17": "trabajo", "18": "libre"},
+    "4": {"7": "ejercicio", "9": "trabajo", "10": "reunion", "11": "trabajo", "12": "trabajo", "13": "trabajo", "14": "comer", "15": "trabajo", "16": "trabajo", "17": "trabajo", "18": "libre"},
+    "5": {"10": "libre", "11": "libre", "12": "libre"},
+    "6": {"10": "libre", "11": "libre", "12": "libre"}
+  }
+}
