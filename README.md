@@ -22,6 +22,29 @@ python3 pomodoro.py --auto   # como lo lanza el inicio de sesión / el timer de 
 Requiere Python 3 con Tk, y para el icono de la barra PyGObject + `libayatana-appindicator3`
 del sistema. El teléfono es opcional (`adb` en el PATH).
 
+## Teléfono
+
+Hay dos formas de controlar el teléfono, y conviven:
+
+- **ADB desde la compu** (sin instalar nada): avisos, bloqueo al terminar el descanso, vigilancia de
+  apps que distraen y No molestar. Solo funciona con la compu prendida.
+- **App Android** (`android/`): lleva el pomodoro aunque la compu esté apagada, con el mismo horario,
+  recordatorios y reglas. Se sincroniza con la compu a través del servidor del VPS (`server/`).
+
+Mientras la compu está prendida, ella manda y el teléfono la refleja; lo que hagas en el teléfono
+(iniciar, pausar, descanso, saltar) se aplica en la compu al instante. Con la compu apagada, el teléfono
+lleva la jornada solo. Si la app está viva, ADB deja de repetir sus avisos; si MIUI la mata, la compu
+la revive por ADB y le da sus permisos (accesibilidad, No molestar, batería).
+
+```bash
+./android/build.sh        # compila en el VPS e instala por ADB
+./server/deploy.sh        # sube el servidor de sincronización
+```
+
+La sincronización se activa con `~/.config/pomodoro-ahuevo/sync.json`:
+`{"url": "https://pomodoro.mauriciojuanes.com", "token": "…"}` (el mismo token que
+`/opt/pomodoro-sync/.env` en el VPS). Sin ese archivo la app funciona igual, sin sincronizar.
+
 ## Datos personales
 
 Nada personal vive en el repositorio:
@@ -41,8 +64,10 @@ pomodoro_app/
   paths.py, constants.py     rutas y constantes compartidas
   config.py                  valores por defecto, carga y guardado
   core/                      lógica pura: horario, consejos, formatos de tiempo
-  services/                  sistema: GNOME, systemd, sonido, teléfono (ADB), icono de la barra
+  services/                  sistema: GNOME, systemd, sonido, teléfono (ADB), sincronización, icono de la barra
   controller/                comportamiento: temporizador, jornada, recordatorios
   ui/                        ventanas Tk: principal, pantallas completas, widget, editor, ajustes
   app.py                     estado y unión de todo
+server/                      sincronización (FastAPI en Docker, detrás de nginx en el VPS)
+android/                     app del teléfono (Kotlin, sin dependencias)
 ```

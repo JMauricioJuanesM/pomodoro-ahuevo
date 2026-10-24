@@ -10,6 +10,8 @@ CONFIG_DIR = os.environ.get("POMODORO_CONFIG_DIR") or os.path.expanduser("~/.con
 CONFIG_FILE = os.path.join(CONFIG_DIR, "config.json")
 # Tu horario "original" (el que restaura el botón del editor). Vive fuera del repositorio.
 PERSONAL_DEFAULTS = os.path.join(CONFIG_DIR, "defaults.json")
+# Servidor de sincronización con el teléfono: {"url": …, "token": …}. Sin este archivo no se sincroniza.
+SYNC_FILE = os.path.join(CONFIG_DIR, "sync.json")
 KEYS_BACKUP = os.path.join(CONFIG_DIR, "atajos_respaldo.json")
 
 PANEL_CONFIG = os.path.expanduser("~/.config/adb-panel/config.json")

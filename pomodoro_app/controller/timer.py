@@ -11,6 +11,8 @@ from ..services.shortcuts import disable_shortcuts, restore_shortcuts
 from ..services.system import notify, play_sound, poweroff
 from ..ui.overlays import BreakScreen
 
+SHARED_PHASES = ("work", "short", "long")   # fases que el teléfono puede mover
+
 
 class TimerMixin:
     # ---------- pantallas completas ----------
@@ -197,6 +199,53 @@ class TimerMixin:
         if self.phase != "work" and self.break_skippable:
             self.end_break()
 
+    # ---------- sincronización con el teléfono ----------
+    def idle(self):
+        return self.phase == "work" and not self.running and not self.overlay and not self.shutdown_at
+
+    def timer_snapshot(self):
+        """Estado del temporizador tal como se comparte (fin absoluto si corre, restante si está en pausa)."""
+        today = dt.date.today().isoformat()
+        return {"phase": self.phase, "title": self.phase_title, "color": self.phase_color,
+                "running": self.running, "end_time": round(self.end_time, 1) if self.running else None,
+                "remaining": None if self.running else round(self.remaining), "total": round(self.phase_total),
+                "done_in_cycle": self.done_in_cycle, "overtime": self.overtime,
+                "skippable": self.break_skippable, "shutdown": bool(self.shutdown_at),
+                "stats": {"day": today, "count": self.cfg["stats"].get(today, 0)}}
+
+    def apply_remote_timer(self, t):
+        """El teléfono inició, pausó, saltó o empezó un descanso: hacer lo mismo aquí."""
+        if self.shutdown_at or self.phase not in SHARED_PHASES or t.get("phase") not in SHARED_PHASES:
+            return False
+        if self.overlay and not isinstance(self.overlay, BreakScreen):   # fin de jornada / recordatorio
+            return False
+        remaining = t["end_time"] - time.time() if t["running"] else t["remaining"]
+        if remaining is None or remaining <= 0:
+            return False
+        phase = t["phase"]
+        self.phase, self.phase_title, self.phase_color = phase, NAMES[phase], COLORS[phase]
+        self.overtime = bool(t.get("overtime"))
+        self.phase_total = t.get("total") or remaining
+        self.remaining = remaining
+        self.running = bool(t["running"])
+        self.end_time = t["end_time"] if self.running else None
+        self.done_in_cycle = t.get("done_in_cycle", self.done_in_cycle)
+        self.warned = self.relock_warned = self.break_free = False
+        if phase == "work":
+            self.auto_date = dt.date.today()   # que la jornada no "arranque sola" encima de esto
+            if self.overlay:
+                self.close_overlay()
+                self.show_main()
+            self.render()
+        else:
+            self.set_break_skip(focus=self.focus_now())
+            self.current_tip = pick_tip(self.cfg, phase)
+            self.break_context = "Descanso iniciado desde el teléfono."
+            if self.cfg["sound"]:
+                play_sound()
+            self.show_break_screen()
+        return True
+
     # ---------- reloj ----------
     def tick(self):
         try:
@@ -228,6 +277,7 @@ class TimerMixin:
                 self.last_guard = now
                 self.phone.tick(self.phase == "work" and self.running)
             self.phone_prompt()
+            self.sync.tick()
 
         if self.running:
             self.remaining = self.end_time - now

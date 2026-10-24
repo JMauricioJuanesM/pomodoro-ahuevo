@@ -36,7 +36,7 @@ class WorkdayMixin:
                 return
         # Arranque automático de la jornada (aunque prendas la compu tarde).
         if (self.cfg["autostart"] and self.auto_date != today and idle and b and b[0] <= now < b[1]
-                and is_work(act_kind(self.cfg, aid))):
+                and is_work(act_kind(self.cfg, aid)) and self.sync.ready()):
             self.auto_date = today
             self.start_phase("work")
             notify("Arrancó tu jornada", f"Ahora toca {act_label(self.cfg, aid)}. Primer pomodoro de "

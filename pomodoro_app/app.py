@@ -12,6 +12,7 @@ from .controller.workday import WorkdayMixin
 from .services.autostart import sync_autostart
 from .services.phone import Phone
 from .services.shortcuts import restore_shortcuts
+from .services.sync import Sync
 from .services.system import notify
 from .services.tray import TrayClient
 from .ui.main_window import MainWindowMixin
@@ -58,6 +59,7 @@ class Pomodoro(MainWindowMixin, TimerMixin, WorkdayMixin, RemindersMixin, tk.Tk)
         self.last_phone_nag = 0
         self.hidden_notice = False
         self.phone = Phone(self)
+        self.sync = Sync(self)
 
         self._build()
         self.widget = Widget(self)

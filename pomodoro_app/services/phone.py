@@ -12,8 +12,11 @@ from concurrent.futures import ThreadPoolExecutor
 
 from ..config import save_config
 from ..constants import VIBRATION
-from ..paths import PANEL_CONFIG, PANEL_META
+from ..paths import PANEL_CONFIG, PANEL_META, SYNC_FILE
 from .system import notify, run
+
+APP_PKG = "com.mauriciojuanes.pomodoro"
+APP_GUARD = f"{APP_PKG}/{APP_PKG}.GuardService"
 
 
 class Phone:
@@ -36,6 +39,8 @@ class Phone:
         self.warned = False
         self.distract_pkg = None      # app que distrae sobre la que ya se avisó
         self.dnd_by_us = False
+        self.app_installed = None     # ¿está instalada la app del teléfono? (se revisa cada tanto)
+        self.last_app_check = 0
         threading.Thread(target=self._loop, daemon=True).start()
 
     def _loop(self):
@@ -226,11 +231,45 @@ class Phone:
             self.shell("cmd", "notification", "set_dnd", "off")
             self.dnd_by_us = False
 
+    # ---------- app del teléfono ----------
+    def app_handles(self):
+        """¿La app del teléfono está viva y vigilando? Entonces ella avisa y bloquea, no ADB."""
+        sync = getattr(self.app, "sync", None)
+        return bool(sync and sync.phone_app_alive())
+
+    def check_app(self):
+        """Si la app está instalada pero no responde (MIUI la mata), la revive y le da sus permisos."""
+        self.last_app_check = time.time()
+        self.app_installed = APP_PKG in self.adb("shell", "pm", "list", "packages", APP_PKG)
+        if not self.app_installed or self.app_handles():
+            return
+        for perm in ("android.permission.POST_NOTIFICATIONS",):
+            self.adb("shell", "pm", "grant", APP_PKG, perm)
+        self.adb("shell", "cmd", "notification", "allow_dnd", APP_PKG)
+        self.adb("shell", "dumpsys", "deviceidle", "whitelist", "+" + APP_PKG)
+        self.adb("shell", "cmd", "appops", "set", APP_PKG, "RUN_IN_BACKGROUND", "allow")
+        enabled = self.adb("shell", "settings", "get", "secure", "enabled_accessibility_services").strip()
+        if APP_GUARD not in enabled:
+            services = [x for x in enabled.split(":") if x and x != "null"] + [APP_GUARD]
+            self.adb("shell", "settings", "put", "secure", "enabled_accessibility_services", ":".join(services))
+            self.adb("shell", "settings", "put", "secure", "accessibility_enabled", "1")
+        try:
+            with open(SYNC_FILE) as f:
+                s = json.load(f)
+            extras = ["--es", "url", s["url"], "--es", "token", s["token"]]
+        except (OSError, ValueError, KeyError):
+            extras = []
+        self.shell("am", "start-foreground-service", "-n", f"{APP_PKG}/.PomodoroService", *extras)
+
     # ---------- acciones que usa la app ----------
     def notify(self, title, text, vibrate=True):
+        if self.app_handles():
+            return
         self.submit(lambda: self._notify(title, text, vibrate))
 
     def break_over(self, text):
+        if self.app_handles():
+            return
         self.notify("⏰ Se acabó el descanso", text)
         if self.app.cfg["phone_break_end"] == "lock":
             delay = self.app.cfg["phone_lock_delay_sec"]
@@ -259,6 +298,12 @@ class Phone:
             return
         if now - self.last_battery > 120:
             self.refresh_battery()
+        if now - self.last_app_check > 300:
+            self.check_app()
+        if self.app_handles():   # la app del teléfono se encarga de las reglas
+            self._set_dnd(False)
+            self.on_since, self.warned, self.distract_pkg = None, False, None
+            return
         cfg = self.app.cfg
         self._set_dnd(working and cfg["phone_dnd"])
         if not working:
@@ -318,13 +363,18 @@ class Phone:
             bat = ""
             if st["battery"] is not None:
                 bat = f"  ·  {'⚡' if st['charging'] else '🔋'} {st['battery']}%"
-            return f"📱 {st['model'] or 'Teléfono'}  ·  {'cable' if conn == 'usb' else 'WiFi'}{bat}"
+            app = "  ·  app ✓" if self.app_handles() else ""
+            return f"📱 {st['model'] or 'Teléfono'}  ·  {'cable' if conn == 'usb' else 'WiFi'}{bat}{app}"
+        if self.app_handles():
+            return "📱 App del teléfono activa (sin ADB)"
         return {"searching": "📱 Buscando el teléfono…",
                 "unauthorized": "📱 Acepta la depuración USB en el teléfono",
                 "needs_cable": "📱 Sin conexión con el teléfono",
                 "never": "📱 Conecta tu teléfono por cable una vez"}[conn]
 
     def needs_action(self):
+        if self.app_handles():   # sin ADB pero con la app viva, el teléfono sigue vigilado
+            return False
         return self.app.cfg["phone_enabled"] and self.state["conn"] in ("needs_cable", "unauthorized", "never")
 
 
