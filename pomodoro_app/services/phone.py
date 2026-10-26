@@ -235,7 +235,8 @@ class Phone:
     def app_handles(self):
         """¿La app del teléfono está viva y vigilando? Entonces ella avisa y bloquea, no ADB."""
         sync = getattr(self.app, "sync", None)
-        return bool(sync and sync.phone_app_alive())
+        # En modo banco la vigilancia se apaga a propósito (Nu desconfía de la accesibilidad): no revivirla.
+        return bool(sync and (sync.phone_app_alive() or sync.phone_app_info().get("bank")))
 
     def check_app(self):
         """Si la app está instalada pero no responde (MIUI la mata), la revive y le da sus permisos."""
@@ -245,6 +246,8 @@ class Phone:
         if self.app_installed and sync and not sync.phone_app_info().get("secure"):
             # Para que el teléfono vuelva a encender el DNS y el bloqueo de Xiaomi él solo (Panel ADB).
             self.adb("shell", "pm", "grant", APP_PKG, "android.permission.WRITE_SECURE_SETTINGS")
+            # Saber que ya saliste de la app del banco (la vigilancia se apaga mientras la usas).
+            self.adb("shell", "appops", "set", APP_PKG, "GET_USAGE_STATS", "allow")
         if not self.app_installed or self.app_handles():
             return
         for perm in ("android.permission.POST_NOTIFICATIONS",):

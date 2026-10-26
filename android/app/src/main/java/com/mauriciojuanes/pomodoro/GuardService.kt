@@ -11,6 +11,7 @@ import android.view.inputmethod.InputMethodManager
 /**
  * Vigilancia (lo mismo que hacía la compu por ADB, pero desde el teléfono):
  *  - a cualquier hora, si abres una app que el Panel ADB tiene bloqueada, te saca de ella ([Blocks]);
+ *  - a cualquier hora, revisa lo que se ve en las apps de riesgo ([ScreenWatch]);
  * y durante el trabajo:
  *  - si abres una app que distrae, avisa y a los pocos segundos te manda al inicio;
  *  - si llevas mucho rato en el teléfono, avisa y luego lo bloquea;
@@ -23,6 +24,7 @@ class GuardService : AccessibilityService() {
     private var warned = false
     private var distractPkg: String? = null
     private var lastBlockedPkg = ""
+    private var screen: ScreenWatch? = null
     private var lastBlockedAt = 0L
     private val ignored = mutableSetOf("com.android.systemui", "android")
 
@@ -41,11 +43,13 @@ class GuardService : AccessibilityService() {
         getSystemService(InputMethodManager::class.java)?.enabledInputMethodList?.forEach { ignored += it.packageName }
         if (!PomodoroService.running) PomodoroService.start(this)
         handler.post(loop)
+        screen = ScreenWatch(this).also { it.start() }
     }
 
     override fun onDestroy() {
         instance = null
         handler.removeCallbacks(loop)
+        screen?.stop()
         super.onDestroy()
     }
 
@@ -56,6 +60,11 @@ class GuardService : AccessibilityService() {
         val pkg = e.packageName?.toString() ?: return
         if (pkg in ignored) return
         fg = pkg
+        screen?.onForeground(pkg)
+        if (BankMode.isBank(pkg)) {   // el banco desconfía de la accesibilidad: nos apagamos mientras lo usas
+            BankMode.enter(this)
+            return
+        }
         if (Blocks.isBlocked(pkg)) {
             performGlobalAction(GLOBAL_ACTION_HOME)
             val t = System.currentTimeMillis()

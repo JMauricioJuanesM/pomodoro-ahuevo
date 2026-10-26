@@ -83,6 +83,11 @@ object Store {
         get() = runCatching { JSONObject(str("relock_seen", "{}")) }.getOrDefault(JSONObject())
         set(v) = put("relock_seen", v.toString())
 
+    /** Desde cuándo estás en una app del banco con la vigilancia apagada (0 = no). Ver [BankMode]. */
+    var bankSince: Long
+        get() = p.getLong("bank_since", 0L)
+        set(v) = p.edit().putLong("bank_since", v).apply()
+
     var blocksRevSeen: Int
         get() = p.getInt("blocks_rev_seen", 0)
         set(v) = p.edit().putInt("blocks_rev_seen", v).apply()

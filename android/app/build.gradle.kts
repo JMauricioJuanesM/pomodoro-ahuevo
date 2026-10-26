@@ -11,8 +11,8 @@ android {
         applicationId = "com.mauriciojuanes.pomodoro"
         minSdk = 28
         targetSdk = 34
-        versionCode = 4
-        versionName = "2.2"
+        versionCode = 6
+        versionName = "2.4"
     }
 
     buildTypes {

@@ -13,12 +13,20 @@
     <!-- Lo otorga la compu por ADB: volver a encender el DNS privado y el bloqueo de apps de Xiaomi (Panel ADB). -->
     <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS"
         tools:ignore="ProtectedPermissions" />
+    <!-- Lo otorga la compu por ADB (appops GET_USAGE_STATS): saber que ya saliste de la app del banco. -->
+    <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS"
+        tools:ignore="ProtectedPermissions" />
 
     <!-- Para elegir las apps que distraen de entre las instaladas. -->
     <queries>
         <intent>
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+        <!-- Para saber qué apps son navegadores (ScreenWatch). -->
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="https" />
         </intent>
     </queries>
 

@@ -25,6 +25,7 @@ class PomodoroService : Service() {
     private val handler = Handler(Looper.getMainLooper())
     private var lastKey = ""
     private var lastHeartbeat = 0L
+    private var lastBank = false
     private val loop = object : Runnable {
         override fun run() {
             try {
@@ -68,6 +69,7 @@ class PomodoroService : Service() {
     private fun tick() {
         Engine.tick()
         Blocks.tick()
+        BankMode.tick(this)
         val working = Engine.working()
         val screenOn = getSystemService(PowerManager::class.java).isInteractive
         if (working && screenOn) Store.setCount("phone_stats", Store.count("phone_stats") + 1)
@@ -78,12 +80,15 @@ class PomodoroService : Service() {
             lastKey = key
             getSystemService(NotificationManager::class.java).notify(ID, build())
         }
-        if (System.currentTimeMillis() - lastHeartbeat > 45_000) {
+        val bank = Store.bankSince > 0
+        if (System.currentTimeMillis() - lastHeartbeat > 45_000 || bank != lastBank) {   // modo banco: avisar ya
+            lastBank = bank
             lastHeartbeat = System.currentTimeMillis()
             val bm = getSystemService(BatteryManager::class.java)
             Sync.heartbeat(JSONObject()
                 .put("guard", GuardService.instance != null)
                 .put("secure", Blocks.canWrite())
+                .put("bank", Store.bankSince > 0)
                 .put("dnd_access", getSystemService(NotificationManager::class.java).isNotificationPolicyAccessGranted)
                 .put("battery", bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY))
                 .put("model", Build.MODEL)
@@ -154,5 +159,5 @@ class PomodoroService : Service() {
 }
 
 object BuildConfigInfo {
-    const val VERSION = "2.2"
+    const val VERSION = "2.4"
 }

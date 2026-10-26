@@ -3,7 +3,10 @@
 Guarda en un JSON la configuración que comparten la compu y el teléfono, el estado del
 temporizador, las estadísticas y los bloqueos del teléfono (lo que el Panel ADB bloqueó y los
 desbloqueos temporales con su hora de vencimiento, para que el teléfono los cumpla aunque la compu
-esté apagada). Los clientes se enteran de los cambios al instante con
+esté apagada).
+
+También analiza capturas de pantalla para detectar desnudez (`screen.py`, en memoria, sin guardarlas)
+y guarda las alertas que resultan, para que el bot de Telegram te escriba. Los clientes se enteran de los cambios al instante con
 `GET /api/wait` (long-poll: responde en cuanto cambia algo o tras `timeout` segundos).
 """
 import asyncio
@@ -35,6 +38,7 @@ state = _load()
 state.setdefault("blocks", None)
 state.setdefault("blocks_rev", 0)
 state.setdefault("blocks_source", None)
+state.setdefault("alerts", [])
 
 
 def _save():
@@ -42,6 +46,10 @@ def _save():
     with open(DATA + ".tmp", "w") as f:
         json.dump(state, f, ensure_ascii=False)
     os.replace(DATA + ".tmp", DATA)
+
+
+async def _raw_body(request: Request) -> bytes:
+    return await request.body()
 
 
 def auth(authorization: str = Header("")):
@@ -133,6 +141,26 @@ async def put_blocks(request: Request):
     state["blocks"] = blocks
     state["blocks_rev"] = state["rev"] + 1
     state["blocks_source"] = body.get("source")
+    await bump()
+    return {"rev": state["rev"]}
+
+
+@app.post("/api/screen", dependencies=[Depends(auth)])
+def check_screen(body: bytes = Depends(_raw_body)):
+    """Una captura reducida (JPEG) → nivel de desnudez. Corre en el pool de hilos: no frena el long-poll."""
+    from screen import classify
+    if not body or len(body) > 2_000_000:
+        raise HTTPException(400, "imagen vacía o demasiado grande")
+    return classify(body)
+
+
+@app.post("/api/alert", dependencies=[Depends(auth)])
+async def put_alert(request: Request):
+    """Se detectó contenido: queda registrado y despierta a los demás (el bot te escribe)."""
+    body = await request.json()
+    alert = {"ts": time.time(), "source": body.get("source"), "level": body.get("level"),
+             "app": body.get("app"), "app_name": body.get("app_name"), "action": body.get("action")}
+    state["alerts"] = (state["alerts"] + [alert])[-200:]
     await bump()
     return {"rev": state["rev"]}
 

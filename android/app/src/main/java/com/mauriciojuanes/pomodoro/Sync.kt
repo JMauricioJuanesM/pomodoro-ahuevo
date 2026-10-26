@@ -78,6 +78,7 @@ object Sync {
                     "timer" -> req("PUT", "/api/timer", JSONObject().put("source", "phone").put("timer", body))
                     "config" -> req("PUT", "/api/config", JSONObject().put("source", "phone").put("config", body))
                     "blocks" -> req("PUT", "/api/blocks", JSONObject().put("source", "phone").put("blocks", body))
+                    "alert" -> req("POST", "/api/alert", body.put("source", "phone"))
                     else -> req("POST", "/api/heartbeat", body.put("source", "phone"))
                 }
                 synchronized(lock) { if (pending[kind] === body) pending.remove(kind) }
@@ -102,6 +103,28 @@ object Sync {
     fun hasPendingConfig() = synchronized(lock) { "config" in pending }
 
     fun pushBlocks(b: JSONObject) = queue("blocks", b)
+
+    /** Se detectó contenido en pantalla ([ScreenWatch]): queda registrado y el bot te escribe. */
+    fun alert(level: String, pkg: String, name: String, action: String) = queue("alert", JSONObject()
+        .put("level", level).put("app", pkg).put("app_name", name).put("action", action))
+
+    /** Manda una captura reducida a analizar (en un hilo de fondo). Regresa "explicit" | "suggestive" | "none". */
+    fun checkScreen(jpeg: ByteArray): String {
+        val c = URL(Store.url + "/api/screen").openConnection() as HttpURLConnection
+        try {
+            c.requestMethod = "POST"
+            c.connectTimeout = 8000
+            c.readTimeout = 15000
+            c.setRequestProperty("Authorization", "Bearer " + Store.token)
+            c.setRequestProperty("Content-Type", "image/jpeg")
+            c.doOutput = true
+            c.outputStream.use { it.write(jpeg) }
+            if (c.responseCode != 200) throw java.io.IOException("HTTP ${c.responseCode}")
+            return JSONObject(c.inputStream.bufferedReader().use { it.readText() }).optString("level", "none")
+        } finally {
+            c.disconnect()
+        }
+    }
 
     fun hasPendingBlocks() = synchronized(lock) { "blocks" in pending }
 

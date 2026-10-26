@@ -1,4 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="guard_description">Durante tus pomodoros de trabajo detecta qué app tienes abierta: te saca de las apps que distraen y bloquea el teléfono si llevas mucho tiempo en él. No lee el contenido de la pantalla.</string>
+    <string name="guard_description">Detecta qué app tienes abierta: te saca de las apps bloqueadas y, durante tus pomodoros, de las que distraen. En apps de riesgo (navegadores, redes, galería) toma capturas reducidas cada pocos segundos y tu propio servidor las revisa para detectar desnudez, sin guardarlas.</string>
 </resources>
