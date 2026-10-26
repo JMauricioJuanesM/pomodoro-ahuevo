@@ -9,7 +9,9 @@ import android.view.accessibility.AccessibilityEvent
 import android.view.inputmethod.InputMethodManager
 
 /**
- * Vigilancia durante el trabajo (lo mismo que hacía la compu por ADB, pero desde el teléfono):
+ * Vigilancia (lo mismo que hacía la compu por ADB, pero desde el teléfono):
+ *  - a cualquier hora, si abres una app que el Panel ADB tiene bloqueada, te saca de ella ([Blocks]);
+ * y durante el trabajo:
  *  - si abres una app que distrae, avisa y a los pocos segundos te manda al inicio;
  *  - si llevas mucho rato en el teléfono, avisa y luego lo bloquea;
  *  - al terminar el descanso, si sigues en el teléfono, avisa y lo bloquea.
@@ -20,6 +22,8 @@ class GuardService : AccessibilityService() {
     private var onSince = 0L
     private var warned = false
     private var distractPkg: String? = null
+    private var lastBlockedPkg = ""
+    private var lastBlockedAt = 0L
     private val ignored = mutableSetOf("com.android.systemui", "android")
 
     private val loop = object : Runnable {
@@ -52,6 +56,16 @@ class GuardService : AccessibilityService() {
         val pkg = e.packageName?.toString() ?: return
         if (pkg in ignored) return
         fg = pkg
+        if (Blocks.isBlocked(pkg)) {
+            performGlobalAction(GLOBAL_ACTION_HOME)
+            val t = System.currentTimeMillis()
+            if (pkg != lastBlockedPkg || t - lastBlockedAt > 60_000) {
+                lastBlockedPkg = pkg
+                lastBlockedAt = t
+                Notifier.alert(this, "🚫 ${Blocks.label(pkg)} está bloqueada", "La bloqueaste en el Panel ADB.", vibrate = false)
+            }
+            return
+        }
         if (Engine.working()) check()
     }
 

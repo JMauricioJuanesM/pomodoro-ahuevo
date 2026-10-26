@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
@@ -32,6 +33,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import com.mauriciojuanes.pomodoro.ui.Bg
+import com.mauriciojuanes.pomodoro.ui.BlocksScreen
 import com.mauriciojuanes.pomodoro.ui.Card1
 import com.mauriciojuanes.pomodoro.ui.Card2
 import com.mauriciojuanes.pomodoro.ui.DistractingAppsScreen
@@ -47,7 +49,7 @@ import com.mauriciojuanes.pomodoro.ui.observe
 import com.mauriciojuanes.pomodoro.ui.permissions
 import kotlinx.coroutines.delay
 
-/** Cuatro pestañas: Pomodoro, Horario, Recordatorios y Ajustes (lo mismo que en la compu). */
+/** Pestañas: Pomodoro, Horario, Recordatorios y Ajustes (lo mismo que en la compu) y Bloqueos (Panel ADB). */
 class MainActivity : ComponentActivity() {
     private val refresh = { Ui.bump() }
 
@@ -55,7 +57,7 @@ class MainActivity : ComponentActivity() {
 
     private val tabs = listOf(
         Tab("Pomodoro", Icons.Filled.Home), Tab("Horario", Icons.Filled.DateRange),
-        Tab("Recordatorios", Icons.Filled.Notifications), Tab("Ajustes", Icons.Filled.Settings),
+        Tab("Avisos", Icons.Filled.Notifications), Tab("Bloqueos", Icons.Filled.Lock), Tab("Ajustes", Icons.Filled.Settings),
     )
 
     override fun onCreate(state: Bundle?) {
@@ -95,9 +97,10 @@ class MainActivity : ComponentActivity() {
                         observe()
                         when {
                             appsScreen -> DistractingAppsScreen { appsScreen = false }
-                            tab == 0 -> TimerScreen(permissions(this@MainActivity).count { !it.ok }) { tab = 3 }
+                            tab == 0 -> TimerScreen(permissions(this@MainActivity).count { !it.ok }) { tab = 4 }
                             tab == 1 -> ScheduleScreen()
                             tab == 2 -> RemindersScreen()
+                            tab == 3 -> BlocksScreen()
                             else -> SettingsScreen { appsScreen = true }
                         }
                     }

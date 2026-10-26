@@ -40,6 +40,7 @@ object Engine {
     fun listen(f: () -> Unit) = listeners.add(f)
     fun unlisten(f: () -> Unit) = listeners.remove(f)
     private fun changed() = listeners.toList().forEach { it() }
+    fun notifyChanged() = changed()
 
     val cfg: JSONObject get() = Store.config
     val sched get() = Sched(cfg)
@@ -278,6 +279,7 @@ object Engine {
         st.optJSONObject("devices")?.optJSONObject("desktop")?.let {
             desktopSeenAt = now() - (serverNow - it.optDouble("seen", 0.0))
         }
+        Blocks.onRemote(st)
         Store.mergeMax("stats", st.optJSONObject("stats"))
         Store.mergeMax("phone_stats", st.optJSONObject("phone_stats"))
         val rev = st.optInt("timer_rev")

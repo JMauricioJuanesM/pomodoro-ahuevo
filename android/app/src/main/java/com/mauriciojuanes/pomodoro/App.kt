@@ -7,6 +7,7 @@ class App : Application() {
         super.onCreate()
         Store.init(this)
         Engine.init(this)
+        Blocks.init(this)
         Notifier.channels(this)
     }
 }

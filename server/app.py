@@ -1,7 +1,9 @@
-"""Servidor de sincronización del Pomodoro (un solo usuario).
+"""Servidor de sincronización del Pomodoro y del Panel ADB (un solo usuario).
 
 Guarda en un JSON la configuración que comparten la compu y el teléfono, el estado del
-temporizador y las estadísticas. Los clientes se enteran de los cambios al instante con
+temporizador, las estadísticas y los bloqueos del teléfono (lo que el Panel ADB bloqueó y los
+desbloqueos temporales con su hora de vencimiento, para que el teléfono los cumpla aunque la compu
+esté apagada). Los clientes se enteran de los cambios al instante con
 `GET /api/wait` (long-poll: responde en cuanto cambia algo o tras `timeout` segundos).
 """
 import asyncio
@@ -30,6 +32,9 @@ def _load():
 
 
 state = _load()
+state.setdefault("blocks", None)
+state.setdefault("blocks_rev", 0)
+state.setdefault("blocks_source", None)
 
 
 def _save():
@@ -116,6 +121,18 @@ async def put_timer(request: Request):
     st = timer.get("stats") or {}
     if st.get("day"):
         merge_max(state["stats"], {st["day"]: st.get("count", 0)})
+    await bump()
+    return {"rev": state["rev"]}
+
+
+@app.put("/api/blocks", dependencies=[Depends(auth)])
+async def put_blocks(request: Request):
+    body = await request.json()
+    blocks = body["blocks"]
+    blocks["updated"] = time.time()
+    state["blocks"] = blocks
+    state["blocks_rev"] = state["rev"] + 1
+    state["blocks_source"] = body.get("source")
     await bump()
     return {"rev": state["rev"]}
 

@@ -73,6 +73,15 @@ object Store {
         get() = runCatching { Timer.fromJson(JSONObject(str("timer", "{}"))) }.getOrDefault(Timer())
         set(v) = put("timer", v.toJson().toString())
 
+    /** Bloqueos del Panel ADB (ver [Blocks]). */
+    var blocks: JSONObject
+        get() = runCatching { JSONObject(str("blocks", "{}")) }.getOrDefault(JSONObject())
+        set(v) = put("blocks", v.toString())
+
+    var blocksRevSeen: Int
+        get() = p.getInt("blocks_rev_seen", 0)
+        set(v) = p.edit().putInt("blocks_rev_seen", v).apply()
+
     var timerRevSeen: Int
         get() = p.getInt("timer_rev_seen", 0)
         set(v) = p.edit().putInt("timer_rev_seen", v).apply()

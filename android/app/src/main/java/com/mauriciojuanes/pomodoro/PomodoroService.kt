@@ -67,6 +67,7 @@ class PomodoroService : Service() {
 
     private fun tick() {
         Engine.tick()
+        Blocks.tick()
         val working = Engine.working()
         val screenOn = getSystemService(PowerManager::class.java).isInteractive
         if (working && screenOn) Store.setCount("phone_stats", Store.count("phone_stats") + 1)
@@ -82,6 +83,7 @@ class PomodoroService : Service() {
             val bm = getSystemService(BatteryManager::class.java)
             Sync.heartbeat(JSONObject()
                 .put("guard", GuardService.instance != null)
+                .put("secure", Blocks.canWrite())
                 .put("dnd_access", getSystemService(NotificationManager::class.java).isNotificationPolicyAccessGranted)
                 .put("battery", bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY))
                 .put("model", Build.MODEL)
@@ -152,5 +154,5 @@ class PomodoroService : Service() {
 }
 
 object BuildConfigInfo {
-    const val VERSION = "2.0"
+    const val VERSION = "2.1"
 }

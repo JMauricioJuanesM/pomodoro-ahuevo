@@ -13,7 +13,7 @@ import java.net.URL
 object Sync {
     private val main = Handler(Looper.getMainLooper())
     private val lock = Object()
-    private val pending = LinkedHashMap<String, JSONObject>()   // "timer" / "heartbeat" → cuerpo
+    private val pending = LinkedHashMap<String, JSONObject>()   // "timer" / "config" / "blocks" / "heartbeat" → cuerpo
     private var started = false
     @Volatile private var rev = -1   // -1: la primera consulta responde al instante
     @Volatile var lastError = ""
@@ -77,6 +77,7 @@ object Sync {
                 when (kind) {
                     "timer" -> req("PUT", "/api/timer", JSONObject().put("source", "phone").put("timer", body))
                     "config" -> req("PUT", "/api/config", JSONObject().put("source", "phone").put("config", body))
+                    "blocks" -> req("PUT", "/api/blocks", JSONObject().put("source", "phone").put("blocks", body))
                     else -> req("POST", "/api/heartbeat", body.put("source", "phone"))
                 }
                 synchronized(lock) { if (pending[kind] === body) pending.remove(kind) }
@@ -99,6 +100,10 @@ object Sync {
     fun pushConfig(c: JSONObject) = queue("config", c)
 
     fun hasPendingConfig() = synchronized(lock) { "config" in pending }
+
+    fun pushBlocks(b: JSONObject) = queue("blocks", b)
+
+    fun hasPendingBlocks() = synchronized(lock) { "blocks" in pending }
 
     /** Llegó un estado más nuevo de la compu: lo nuestro pendiente ya no aplica. */
     fun dropTimer() = synchronized(lock) { pending.remove("timer") }

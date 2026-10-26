@@ -241,6 +241,10 @@ class Phone:
         """Si la app está instalada pero no responde (MIUI la mata), la revive y le da sus permisos."""
         self.last_app_check = time.time()
         self.app_installed = APP_PKG in self.adb("shell", "pm", "list", "packages", APP_PKG)
+        sync = getattr(self.app, "sync", None)
+        if self.app_installed and sync and not sync.phone_app_info().get("secure"):
+            # Para que el teléfono vuelva a encender el DNS y el bloqueo de Xiaomi él solo (Panel ADB).
+            self.adb("shell", "pm", "grant", APP_PKG, "android.permission.WRITE_SECURE_SETTINGS")
         if not self.app_installed or self.app_handles():
             return
         for perm in ("android.permission.POST_NOTIFICATIONS",):
