@@ -78,6 +78,11 @@ object Store {
         get() = runCatching { JSONObject(str("blocks", "{}")) }.getOrDefault(JSONObject())
         set(v) = put("blocks", v.toString())
 
+    /** Cuándo vio el teléfono cada desbloqueo (para el tope de 15 min del DNS y del bloqueo de Xiaomi). */
+    var relockSeen: JSONObject
+        get() = runCatching { JSONObject(str("relock_seen", "{}")) }.getOrDefault(JSONObject())
+        set(v) = put("relock_seen", v.toString())
+
     var blocksRevSeen: Int
         get() = p.getInt("blocks_rev_seen", 0)
         set(v) = p.edit().putInt("blocks_rev_seen", v).apply()

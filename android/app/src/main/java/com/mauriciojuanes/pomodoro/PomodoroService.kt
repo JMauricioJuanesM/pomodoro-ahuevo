@@ -154,5 +154,5 @@ class PomodoroService : Service() {
 }
 
 object BuildConfigInfo {
-    const val VERSION = "2.1"
+    const val VERSION = "2.2"
 }

@@ -18,11 +18,15 @@ import org.json.JSONObject
  *    (requiere WRITE_SECURE_SETTINGS, que la compu otorga por ADB);
  *  - las apps bloqueadas se cierran al abrirlas (con la accesibilidad de [GuardService]).
  *
- * Bloquear es fácil (un toque); desbloquear desde aquí pide motivo, una espera y dura poco.
+ * Desde el teléfono solo se puede bloquear: desbloquear se hace en la compu (Panel ADB). Y el DNS y el
+ * bloqueo de Xiaomi nunca quedan abiertos más de [MAX_SHORT_SEC] desde que el teléfono se entera, pida
+ * lo que pida el panel (para revisar algo rápido basta; más tiempo es riesgo de recaída).
  */
 object Blocks {
     private lateinit var ctx: Context
     private var lastEnforce = 0L
+    private val SHORT = setOf("dns", "applock")
+    const val MAX_SHORT_SEC = 15 * 60
 
     fun init(c: Context) {
         ctx = c.applicationContext
@@ -53,9 +57,28 @@ object Blocks {
     fun label(pkg: String): String = state.optJSONObject("labels")?.optString(pkg).takeUnless { it.isNullOrEmpty() }
         ?: pkg.substringAfterLast('.')
 
-    /** ¿Hay un desbloqueo vigente para esto? (sin hora = hasta que lo reactives) */
-    fun pending(kind: String, pkg: String? = null) =
-        relocks().any { it.kind == kind && it.pkg == pkg && (it.at == null || it.at > now()) }
+    /** Cuándo se vuelve a bloquear de verdad: el DNS y el bloqueo de Xiaomi, a lo más 15 min tras verlo aquí. */
+    fun effectiveAt(r: Relock): Double? {
+        if (r.kind !in SHORT) return r.at
+        val cap = firstSeen(r) + MAX_SHORT_SEC
+        return if (r.at == null) cap else minOf(r.at, cap)
+    }
+
+    private fun key(r: Relock) = "${r.kind}|${r.pkg}|${r.at}"
+
+    private fun firstSeen(r: Relock): Double {
+        val seen = Store.relockSeen
+        if (!seen.has(key(r))) {
+            seen.put(key(r), now())
+            Store.relockSeen = seen
+        }
+        return seen.optDouble(key(r), now())
+    }
+
+    /** ¿Hay un desbloqueo vigente para esto? */
+    fun pending(kind: String, pkg: String? = null) = relocks().any {
+        it.kind == kind && it.pkg == pkg && (effectiveAt(it)?.let { at -> at > now() } ?: true)
+    }
 
     fun isBlocked(pkg: String) = pkg in blockedApps() && !pending("app", pkg)
 
@@ -73,7 +96,7 @@ object Blocks {
     // ---------- reloj (cada segundo desde PomodoroService) ----------
     fun tick() {
         if (!configured()) return
-        val due = relocks().filter { it.at != null && it.at <= now() }
+        val due = relocks().filter { r -> effectiveAt(r)?.let { it <= now() } ?: false }
         if (due.isNotEmpty()) {
             relock(due)
             Notifier.alert(ctx, "🔒 Se volvió a bloquear", due.joinToString(", ") { it.label })
@@ -124,37 +147,20 @@ object Blocks {
         val have = (0 until apps.length()).map { apps.optString(it) }.toMutableSet()
         items.filter { it.kind == "app" && it.pkg != null }.forEach { have += it.pkg!! }
         b.put("blocked_apps", JSONArray(have.sorted()))
+        forgetSeen(b)
+    }
+
+    private fun forgetSeen(b: JSONObject) {
+        val arr = b.optJSONArray("relocks") ?: JSONArray()
+        val live = (0 until arr.length()).mapNotNull { arr.optJSONObject(it) }.map {
+            "${it.optString("kind")}|${if (it.isNull("pkg")) null else it.optString("pkg")}|${if (it.isNull("at")) null else it.optDouble("at")}"
+        }.toSet()
+        val seen = Store.relockSeen
+        seen.keys().asSequence().toList().filter { it !in live }.forEach { seen.remove(it) }
+        Store.relockSeen = seen
     }
 
     fun relockAll() = relock(relocks())
-
-    /** Desbloqueo de emergencia desde el teléfono (p. ej. un WiFi con portal que el DNS no deja abrir). */
-    fun unlock(kind: String, minutes: Int, reason: String) = edit { b ->
-        val label = (if (kind == "dns") "DNS privado" else "Bloqueo de apps de Xiaomi") + " (teléfono: $reason)"
-        val arr = b.optJSONArray("relocks") ?: JSONArray()
-        val kept = JSONArray()
-        for (i in 0 until arr.length()) arr.optJSONObject(i)?.let { if (it.optString("kind") != kind) kept.put(it) }
-        kept.put(JSONObject().put("kind", kind).put("pkg", JSONObject.NULL).put("label", label)
-            .put("at", now() + minutes * 60))
-        b.put("relocks", kept)
-        val log = b.optJSONArray("phone_log") ?: JSONArray()
-        log.put(JSONObject().put("ts", now()).put("kind", kind).put("minutes", minutes).put("reason", reason))
-        while (log.length() > 100) log.remove(0)
-        b.put("phone_log", log)
-        val cr = ctx.contentResolver
-        if (canWrite()) {
-            if (kind == "dns") Settings.Global.putString(cr, "private_dns_mode", "off")
-            else Settings.Secure.putString(cr, "access_control_lock_enabled", "0")
-        }
-    }
-
-    /** Segundos de espera antes de poder desbloquear: crece con cada desbloqueo del día (como en el panel). */
-    fun unlockWait(): Int {
-        val log = state.optJSONArray("phone_log") ?: JSONArray()
-        val dayStart = java.time.LocalDate.now().atStartOfDay(java.time.ZoneId.systemDefault()).toEpochSecond()
-        val today = (0 until log.length()).count { (log.optJSONObject(it)?.optDouble("ts") ?: 0.0) >= dayStart }
-        return minOf(300, state.optInt("unlock_wait_sec", 120) + 30 * today)
-    }
 
     // ---------- lo que llega del servidor ----------
     fun onRemote(st: JSONObject) {
@@ -164,6 +170,7 @@ object Blocks {
         if (rev > Store.blocksRevSeen && !Sync.hasPendingBlocks() &&
             (st.optString("blocks_source") != "phone" || !configured())) {
             Store.blocks = b
+            forgetSeen(b)
             enforce()
         }
         Store.blocksRevSeen = maxOf(Store.blocksRevSeen, rev)
