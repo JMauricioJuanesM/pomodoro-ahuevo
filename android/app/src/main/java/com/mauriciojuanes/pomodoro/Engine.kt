@@ -173,6 +173,14 @@ object Engine {
                 return
             }
         }
+        // Un bloque «enfocado» (p. ej. una reunión) que empieza a media pausa la termina: llegas a tiempo.
+        val breakEnd = timer.endTime
+        if ((timer.phase == "short" || timer.phase == "long") && timer.running && breakEnd != null &&
+            b.aid != null && s.kind(b.aid) == "enfocado" &&
+            b.start.atZone(java.time.ZoneId.systemDefault()).toEpochSecond() > breakEnd - timer.total + 1) {
+            endBreak()
+            return
+        }
         val bounds = s.bounds(now.toLocalDate())
         val idle = timer.phase == "work" && !timer.running
         if (flag("autostart", true) && Store.autoDate != today && idle && bounds != null &&

@@ -171,7 +171,7 @@ class TimerMixin:
                                     f"para tus últimos {fmt(lim[1])} de descanso.")
         self.show_main()
 
-    def end_break(self):
+    def end_break(self, title="Descanso terminado"):
         was = self.phase
         self.close_overlay()
         if self.cfg["sound"]:
@@ -191,7 +191,7 @@ class TimerMixin:
             self.start_phase("work", run_now=auto)
             msg = (f"Ahora toca {act_label(self.cfg, aid)}: pomodoro de {fmt(self.phase_total)}." if auto
                    else "Pulsa Iniciar cuando quieras.")
-        notify("Descanso terminado", msg)
+        notify(title, msg)
         self.phone.break_over(msg)
         self.show_main()
 

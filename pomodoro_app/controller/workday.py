@@ -34,6 +34,12 @@ class WorkdayMixin:
             if self.sched_key != key:
                 self.start_sched_break(aid, bstart, bend, key)
                 return
+        # Un bloque «enfocado» (p. ej. una reunión) que empieza a media pausa la termina: llegas a tiempo.
+        if (self.phase in ("short", "long") and self.running and aid
+                and act_kind(self.cfg, aid) == "enfocado"
+                and bstart.timestamp() > self.end_time - self.phase_total + 1):
+            self.end_break(f"Empieza {act_label(self.cfg, aid)}")
+            return
         # Arranque automático de la jornada (aunque prendas la compu tarde).
         if (self.cfg["autostart"] and self.auto_date != today and idle and b and b[0] <= now < b[1]
                 and is_work(act_kind(self.cfg, aid)) and self.sync.ready()):
