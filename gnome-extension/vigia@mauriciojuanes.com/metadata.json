@@ -1,0 +1,7 @@
+{
+  "uuid": "vigia@mauriciojuanes.com",
+  "name": "Pomodoro: vigía de pantalla",
+  "description": "Captura reducida de la ventana al frente cuando es una app de riesgo (navegadores…), para que el Pomodoro detecte desnudez y evite recaídas. No guarda nada: deja una sola imagen temporal en $XDG_RUNTIME_DIR que el Pomodoro manda a revisar y borra. También cierra la ventana cuando el Pomodoro se lo pide.",
+  "shell-version": ["45", "46", "47", "48"],
+  "url": "https://github.com/JMauricioJuanesM/pomodoro-ahuevo"
+}
