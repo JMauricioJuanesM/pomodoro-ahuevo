@@ -70,12 +70,12 @@ class PomodoroService : Service() {
         Engine.tick()
         Blocks.tick()
         BankMode.tick(this)
-        val working = Engine.working()
+        val working = Engine.onDuty()
         val screenOn = getSystemService(PowerManager::class.java).isInteractive
         if (working && screenOn) Store.setCount("phone_stats", Store.count("phone_stats") + 1)
         setDnd(working && Engine.cfg.optBoolean("phone_dnd", false))
         val t = Engine.timer
-        val key = "${t.phase}|${t.running}|${t.endTime}|${t.remaining?.toInt()}|${t.title}|${Engine.authority}|${Engine.online}"
+        val key = "${t.phase}|${t.running}|${t.endTime}|${t.remaining?.toInt()}|${t.title}|${Engine.authority}|${Engine.online}|${t.arming}"
         if (key != lastKey) {
             lastKey = key
             getSystemService(NotificationManager::class.java).notify(ID, build())
@@ -92,6 +92,7 @@ class PomodoroService : Service() {
                 .put("dnd_access", getSystemService(NotificationManager::class.java).isNotificationPolicyAccessGranted)
                 .put("battery", bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY))
                 .put("model", Build.MODEL)
+                .put("fg", if (screenOn) GuardService.instance?.foreground ?: "" else "")
                 .put("version", BuildConfigInfo.VERSION))
         }
     }
@@ -127,8 +128,11 @@ class PomodoroService : Service() {
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setContentIntent(Notifier.openApp(this))
-            .setContentTitle(if (t.phase == "work" && !t.running) "${t.title} · en pausa ${Engine.fmt(Engine.remaining())}"
-                             else t.title)
+            .setContentTitle(when {
+                Engine.onDuty() && !t.running -> "Esperándote en la compu · ${Engine.fmt(Engine.remaining())}"
+                t.phase == "work" && !t.running -> "${t.title} · en pausa ${Engine.fmt(Engine.remaining())}"
+                else -> t.title
+            })
             .setContentText(who)
             .setCategory(Notification.CATEGORY_STOPWATCH)
         if (t.running && t.endTime != null) {
@@ -159,5 +163,5 @@ class PomodoroService : Service() {
 }
 
 object BuildConfigInfo {
-    const val VERSION = "2.4"
+    const val VERSION = "2.5"
 }

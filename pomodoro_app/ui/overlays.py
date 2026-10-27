@@ -4,7 +4,7 @@ import time
 import tkinter as tk
 
 from ..core.schedule import act_label, next_change
-from ..core.timefmt import fmt
+from ..core.timefmt import fmt, fmt_hm
 from ..services.system import lock_session, monitors
 
 
@@ -233,6 +233,11 @@ class EndDayScreen(Overlay):
         hours = today * app.cfg["work_min"] / 60
         self.label(box, f"Hoy hiciste {today} pomodoro{'s' if today != 1 else ''} "
                         f"(≈ {hours:.1f} h de trabajo enfocado). Suficiente por hoy.", 15, "#999")
+        fs = app.cfg.get("focus_stats", {}).get(dt.date.today().isoformat())
+        if fs:
+            self.label(box, f"Trabajo efectivo: {fmt_hm(fs.get('effective', 0))}  ·  tardaste en arrancar "
+                            f"{fmt_hm(fs.get('late', 0))}  ·  distraído {fmt_hm(fs.get('distract', 0))}", 13, "#888",
+                       pady=(4, 0))
         phone_min = int(app.cfg.get("phone_stats", {}).get(dt.date.today().isoformat(), 0) // 60)
         if app.cfg["phone_enabled"]:
             self.label(box, f"📱 Usaste el teléfono {phone_min} min en horario de trabajo.", 13, "#888",
@@ -261,3 +266,53 @@ class EndDayScreen(Overlay):
             self.main.after(1000, self.countdown)
         else:
             self.cont.config(text="Seguir trabajando en horas extra", state="normal")
+
+
+class NudgeScreen(Overlay):
+    """Llevas rato sin arrancar (sensor de presencia): pide empezar, o que digas en qué estás trabajando
+    lejos de la compu (lo juzga la IA). No tiene «cerrar»: se va cuando arranca el pomodoro."""
+
+    BG = "#140f0b"
+
+    def __init__(self, app, act, late):
+        super().__init__(app)
+        self.act, self.late = act, late
+        self.build()
+        self.update(late)
+        self.main.after(300, lambda: self.windows and self.entry.focus_set())
+
+    def fill(self, box, main):
+        self.label(box, "¿ARRANCAMOS?", 34, "#f5b041", True)
+        if not main:
+            return
+        self.late_lbl = self.label(box, "", 22, "#ddd", pady=(14, 4))
+        self.label(box, "El pomodoro solo corre cuando trabajas de verdad; este rato no cuenta.", 14, "#999")
+        self.button(box, "▶  Empezar ahora", self.app.start_effective, bg="#c0392b", fg="white").pack(pady=28)
+        self.label(box, "¿Estás trabajando lejos de la compu? Dime en qué:", 12, "#888", pady=(6, 4))
+        row = tk.Frame(box, bg=self.BG)
+        row.pack()
+        self.entry = tk.Entry(row, width=44, font=("Sans", 12), bg="#222", fg="white", insertbackground="white",
+                              relief="flat")
+        self.entry.pack(side="left", ipady=6)
+        self.entry.bind("<Return>", lambda e: self.declare())
+        self.ask_btn = self.button(row, "Cuenta como trabajo", self.declare)
+        self.ask_btn.pack(side="left", padx=8)
+        self.answer = self.label(box, "", 12, "#e59866", pady=(10, 0))
+
+    def update(self, late):
+        if self.windows:
+            self.late_lbl.config(text=f"Toca {self.act} desde hace {fmt(late)}.")
+
+    def declare(self):
+        text = self.entry.get().strip()
+        if len(text) < 4:
+            self.answer.config(text="Escribe qué estás haciendo.")
+            return
+        self.ask_btn.config(state="disabled")
+        self.answer.config(text="Pensándolo…")
+        self.app.declare_intent(text, self.on_verdict)
+
+    def on_verdict(self, ok, msg):
+        if self.windows:
+            self.ask_btn.config(state="normal")
+            self.answer.config(text=msg)

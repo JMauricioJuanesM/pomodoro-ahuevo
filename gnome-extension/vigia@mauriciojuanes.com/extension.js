@@ -4,7 +4,11 @@
 // corre dentro de GNOME Shell. Cada INTERVAL_S, si la ventana al frente es de riesgo, la captura, la
 // reduce a SIDE px y la deja en $XDG_RUNTIME_DIR/pomodoro-vigia/shot.jpg con meta.json (app y título).
 // El Pomodoro (services/screenwatch.py) la manda a revisar al servidor, la borra y, si hay que actuar,
-// escribe `close` en action: aquí se cierra esa ventana.
+// escribe `close` (o `minimize`) en action: aquí se hace eso con esa ventana.
+//
+// Además, cada FOCUS_S deja focus.json con la ventana al frente (de cualquier app) y los ms sin tocar
+// teclado ni mouse: el sensor de presencia del Pomodoro (services/presence.py) lo usa para saber si
+// estás trabajando de verdad.
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import GdkPixbuf from 'gi://GdkPixbuf';
@@ -16,6 +20,7 @@ Gio._promisify(Shell.Screenshot.prototype, 'screenshot_stage_to_content');
 Gio._promisify(Shell.Screenshot, 'composite_to_stream');
 
 const INTERVAL_S = 6;
+const FOCUS_S = 2;
 const SIDE = 320;
 const DEFAULT_RISK = 'brave|chrom|firefox|opera|edge|vivaldi|epiphany|tor|telegram|discord|eog|loupe|shotwell|gthumb|vlc|mpv|totem|celluloid';
 
@@ -31,6 +36,10 @@ export default class VigiaExtension extends Extension {
             this._tick();
             return GLib.SOURCE_CONTINUE;
         });
+        this._focusTimer = GLib.timeout_add_seconds(GLib.PRIORITY_LOW, FOCUS_S, () => {
+            this._writeFocus();
+            return GLib.SOURCE_CONTINUE;
+        });
         this._actionTimer = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 1, () => {
             this._checkAction();
             return GLib.SOURCE_CONTINUE;
@@ -39,8 +48,9 @@ export default class VigiaExtension extends Extension {
 
     disable() {
         GLib.source_remove(this._timer);
+        GLib.source_remove(this._focusTimer);
         GLib.source_remove(this._actionTimer);
-        this._timer = this._actionTimer = null;
+        this._timer = this._focusTimer = this._actionTimer = null;
     }
 
     _readConfig() {
@@ -61,6 +71,23 @@ export default class VigiaExtension extends Extension {
             return null;
         const cls = `${w.get_wm_class() ?? ''} ${w.get_gtk_application_id() ?? ''}`;
         return this._risk.test(cls) ? w : null;
+    }
+
+    _writeFocus() {
+        try {
+            const w = global.display.focus_window;
+            let idle = null;
+            try {
+                idle = global.backend.get_core_idle_monitor().get_idletime();
+            } catch {}
+            this._write('focus.json', new TextEncoder().encode(JSON.stringify({
+                ts: Date.now() / 1000, idle_ms: idle, locked: Main.sessionMode.isLocked,
+                app: w ? (w.get_wm_class() ?? '') : '', app_id: w ? (w.get_gtk_application_id() ?? '') : '',
+                title: w ? (w.get_title() ?? '') : '', fullscreen: Boolean(w?.is_fullscreen()),
+                minimized: Boolean(w?.minimized)})));
+        } catch (e) {
+            logError(e, 'Vigía: no pude escribir focus.json');
+        }
     }
 
     async _tick() {
@@ -119,6 +146,10 @@ export default class VigiaExtension extends Extension {
             const w = this._focused();
             if (w)
                 w.delete(global.get_current_time());
+        } else if (action === 'minimize') {   // cualquier ventana al frente, no solo las de riesgo
+            const w = global.display.focus_window;
+            if (w && w.can_minimize())
+                w.minimize();
         }
     }
 }

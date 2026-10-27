@@ -6,7 +6,7 @@ import tkinter as tk
 from ..config import save_config
 from ..constants import CARD_BG, COLORS, DARK_BG, MUTED_FG
 from ..core.schedule import act_label, activity, block_at, is_work, next_change
-from ..core.timefmt import fmt
+from ..core.timefmt import fmt, fmt_hm
 from ..services.system import notify
 from .reminders import RemindersWindow
 from .schedule_editor import ScheduleEditor
@@ -45,6 +45,10 @@ class MainWindowMixin:
         self.ring_dots = c.create_text(size / 2, size * 0.68, fill=MUTED_FG, font=("Sans", 13))
         self.status_lbl = tk.Label(root, bg=DARK_BG, fg="#d6d9df", font=("Sans", 10), wraplength=360)
         self.status_lbl.pack(pady=(6, 0))
+        # Sensor de presencia: qué ve ahora (y, si se equivoca, un clic para corregirlo)
+        self.focus_lbl = tk.Label(root, bg=DARK_BG, fg=MUTED_FG, font=("Sans", 9), wraplength=360)
+        self.focus_lbl.pack(pady=(2, 0))
+        self.focus_lbl.bind("<Button-1>", lambda e: self.focus_click())
 
         # Controles
         self.btn_main = tk.Button(root, text="▶  Iniciar", command=self.toggle, relief="flat", bd=0,
@@ -183,6 +187,25 @@ class MainWindowMixin:
             self.last_phone_nag = time.time()
             notify("📱 Tu teléfono está desconectado", text, urgent=self.phase == "work" and self.running)
 
+    # ---------- sensor de presencia ----------
+    def focus_line(self):
+        st, what = self.focus_state, self.focus_what
+        if not self.cfg["focus_sensor"] or not self.on_duty() or not st:
+            return {"text": "", "cursor": ""}
+        if st == "distract":
+            return {"text": f"⚠ {what}: no es lo que toca  ·  ¿sí es trabajo? toca aquí", "fg": "#f5a623",
+                    "cursor": "hand2"}
+        if st == "away":
+            return {"text": "💤 No te veo en la compu", "fg": MUTED_FG, "cursor": ""}
+        if st == "neutral" and what:
+            return {"text": f"· {what}: ni suma ni resta  ·  ¿es trabajo? toca aquí", "fg": MUTED_FG,
+                    "cursor": "hand2"}
+        return {"text": f"✓ Trabajo efectivo{' · ' + what if what else ''}", "fg": "#7dcea0", "cursor": ""}
+
+    def focus_click(self):
+        if self.focus_state in ("distract", "neutral"):
+            self.mark_focus("work")
+
     # ---------- vista ----------
     def view(self):
         """Todo lo que hay que mostrar (ventana y widget) en este momento."""
@@ -207,7 +230,11 @@ class MainWindowMixin:
             ot = self.overtime if self.running else self.in_overtime()
             v.update(accent=COLORS["overtime"] if ot else work_color,
                      title="HORAS EXTRA" if ot else "TRABAJO", short="extra" if ot else "trabajo")
-            if not self.running:
+            if not self.running and self.arming_since is not None:
+                v.update(accent=COLORS["waiting"], title="ESPERÁNDOTE", short="espera",
+                         status=f"Arranca solo en cuanto te pongas a trabajar · llevas "
+                                f"{fmt(time.time() - self.arming_since)}")
+            elif not self.running:
                 v.update(title="EN PAUSA", short="pausa", status="Pulsa Iniciar cuando estés listo.")
             elif ot:
                 v["status"] = "Tu jornada ya terminó: pomodoros cortos y descansos dobles."
@@ -258,8 +285,11 @@ class MainWindowMixin:
         b = self.bounds()
         day = f"jornada {b[0]:%H:%M}–{b[1]:%H:%M}" if b else "hoy sin trabajo"
         phone_min = int(self.cfg.get("phone_stats", {}).get(today, 0) // 60)
+        fs = self.cfg.get("focus_stats", {}).get(today, {})
+        eff = f"  ·  efectivo {fmt_hm(fs.get('effective', 0))}, tarde {fmt_hm(fs.get('late', 0))}" if fs else ""
         self.stats_lbl.config(text=f"Hoy: {n} pomodoro{'s' if n != 1 else ''}  ·  {day}  ·  "
-                                   f"📱 {phone_min} min en el cel trabajando")
+                                   f"📱 {phone_min} min en el cel trabajando{eff}")
+        self.focus_lbl.config(**self.focus_line())
         self.phone_lbl.config(text=self.phone.summary(), fg="#f5a623" if self.phone.needs_action() else MUTED_FG)
         self.title(f"{v['time']} · {v['title'].capitalize()}")
         v["phone_alert"] = self.phone.needs_action()

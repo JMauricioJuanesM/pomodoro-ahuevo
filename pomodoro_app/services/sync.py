@@ -18,7 +18,8 @@ SYNC_KEYS = ("work_min", "short_min", "long_min", "cycles", "warn_sec", "auto_st
              "focus_allow_skip", "long_flex", "long_flex_same_as_short", "long_lock_first_min",
              "long_lock_last_min", "autostart", "overtime_mode", "reminders", "activities", "schedule", "grid_hours",
              "phone_break_end", "phone_lock_delay_sec", "phone_read_sec", "phone_work_guard",
-             "phone_work_warn_min", "phone_work_lock_min", "phone_dnd", "phone_distract", "phone_distracting")
+             "phone_work_warn_min", "phone_work_lock_min", "phone_dnd", "phone_distract", "phone_distracting",
+             "phone_essential", "focus_sensor")
 ALIVE_SEC = 120  # un dispositivo cuenta como "vivo" si habló con el servidor hace menos de esto
 SOURCE = "desktop"
 
@@ -116,7 +117,8 @@ class Sync:
         if time.time() - self.last_heartbeat > 30:
             self.last_heartbeat = time.time()
             self._queue("heartbeat", {"source": SOURCE, "stats": self.app.cfg["stats"],
-                                      "phone_stats": self.app.cfg.get("phone_stats", {})})
+                                      "phone_stats": self.app.cfg.get("phone_stats", {}),
+                                      "info": self.app.focus_info()})
 
     def _on_state(self, st):
         first = self.remote is None

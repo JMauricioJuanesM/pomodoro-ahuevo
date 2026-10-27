@@ -7,7 +7,7 @@ from ..constants import COLORS
 from ..core.schedule import act_label, next_change
 from ..core.timefmt import parse_hhmm
 from ..services.system import notify
-from ..ui.overlays import MessageScreen
+from ..ui.overlays import MessageScreen, NudgeScreen
 
 
 class RemindersMixin:
@@ -41,7 +41,8 @@ class RemindersMixin:
             save_config(self.cfg)
 
     def process_reminders(self):
-        if not self.pending_reminders or self.overlay or self.shutdown_at:
+        # La pantalla de «¿Arrancamos?» no detiene un recordatorio (vuelve después si sigues sin arrancar).
+        if not self.pending_reminders or (self.overlay and not isinstance(self.overlay, NudgeScreen)) or self.shutdown_at:
             return
         r = self.pending_reminders.pop(0)
         aid, start = next_change(self.cfg, dt.datetime.now())
@@ -58,6 +59,7 @@ class RemindersMixin:
     def start_remind_break(self, r, context):
         if self.running:
             self.resume_work = self.end_time - time.time()
+        self.disarm()
         self.phase, self.phase_title, self.phase_color = "remind", r["text"], COLORS["remind"]
         self.overtime = False
         self.phase_total = self.remaining = r["duration"] * 60

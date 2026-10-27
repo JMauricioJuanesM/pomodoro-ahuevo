@@ -11,6 +11,12 @@ def fmt(secs):
     return f"{secs // 60:02d}:{secs % 60:02d}"
 
 
+def fmt_hm(secs):
+    """Duración larga en horas y minutos: «2 h 05 min», «12 min»."""
+    mins = max(0, int(secs // 60))
+    return f"{mins // 60} h {mins % 60:02d} min" if mins >= 60 else f"{mins} min"
+
+
 def parse_hhmm(s):
     m = re.fullmatch(r"\s*(\d{1,2}):(\d{2})\s*", s or "")
     if not m or int(m.group(1)) > 23 or int(m.group(2)) > 59:

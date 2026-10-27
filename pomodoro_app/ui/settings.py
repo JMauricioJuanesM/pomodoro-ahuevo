@@ -94,6 +94,20 @@ def open_settings(app):
     check(f, 4, "always_on_top", "Ventana siempre encima")
     num(f, 5, "widget_size", "Tamaño del widget (px)", 70, 300)
 
+    f = section("Sensor de presencia (trabajo efectivo)", 2, 1)
+    check(f, 0, "focus_sensor", "El pomodoro corre solo mientras trabajo")
+    num(f, 1, "focus_start_sec", "Arranca tras trabajar (seg)", 5, 120)
+    num(f, 2, "focus_idle_min", "Pausa si no toco la compu (min)", 1, 30)
+    num(f, 3, "focus_idle_work_min", "…con una app de trabajo al frente (min)", 1, 60)
+    num(f, 4, "focus_distract_sec", "Pausa tras distraerme (seg)", 15, 600)
+    check(f, 5, "focus_llm", "Preguntarle a la IA lo dudoso")
+    num(f, 6, "focus_llm_per_day", "…máximo de consultas al día", 0, 1000)
+    used = app.judge.calls_today()
+    ttk.Label(f, text=f"Hoy: {used} consulta{'s' if used != 1 else ''} a la IA. Si tardas en arrancar: aviso a "
+                      f"los {app.cfg['focus_nudge_min'][0]} min,\nteléfono estricto a los "
+                      f"{app.cfg['focus_nudge_min'][1]} y pantalla completa a los {app.cfg['focus_nudge_min'][2]}.",
+              foreground="#777").grid(row=7, column=0, columnspan=2, sticky="w", pady=(6, 0))
+
     def save():
         for key, (kind, v, lo, hi) in vars_.items():
             try:

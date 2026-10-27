@@ -62,9 +62,10 @@ fun TimerScreen(missingPerms: Int, openSettings: () -> Unit) {
     val bounds = s.bounds(LocalDate.now())
     val waiting = work && !t.running && cBool("autostart", true) && bounds != null &&
         now < bounds.first && now.hour >= 5 && Store.autoDate != Store.today()
+    val armed = Engine.onDuty() && !t.running
     val accent = when {
         !work -> hex(t.color, Ok)
-        waiting -> Muted
+        waiting || armed -> Muted
         ot -> Overtime
         else -> WorkRed
     }
@@ -72,6 +73,7 @@ fun TimerScreen(missingPerms: Int, openSettings: () -> Unit) {
     val title = when {
         !work -> t.title.uppercase()
         waiting -> "EN ESPERA"
+        armed -> "ESPERÁNDOTE"
         !t.running -> "EN PAUSA"
         ot -> "HORAS EXTRA"
         else -> "TRABAJO"
@@ -109,7 +111,8 @@ fun TimerScreen(missingPerms: Int, openSettings: () -> Unit) {
             }
         }
         VSpace(10)
-        Text(statusText(work, waiting, ot, t.running, bounds?.first), color = Muted, fontSize = 14.sp,
+        Text(if (armed) armedText(t.nudge) else statusText(work, waiting, ot, t.running, bounds?.first),
+            color = Muted, fontSize = 14.sp,
             textAlign = TextAlign.Center, modifier = Modifier.padding(horizontal = 12.dp).height(40.dp))
         VSpace(8)
 
@@ -160,6 +163,13 @@ fun TimerScreen(missingPerms: Int, openSettings: () -> Unit) {
         }
         VSpace(24)
     }
+}
+
+private fun armedText(nudge: Int): String = when (nudge) {
+    0 -> "Arranca en cuanto te pongas a trabajar en la compu."
+    1 -> "Ya llevas rato sin arrancar. Ve a la compu."
+    2 -> "Modo estricto: te saco de todo lo que no sea esencial."
+    else -> "El teléfono se bloquea en cuanto lo uses. Ve a la compu."
 }
 
 private fun statusText(work: Boolean, waiting: Boolean, ot: Boolean, running: Boolean, start: LocalDateTime?): String = when {

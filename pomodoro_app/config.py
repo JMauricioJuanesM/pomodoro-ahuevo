@@ -53,6 +53,23 @@ DEFAULT_CONFIG = {
     "phone_serial": None,
     "phone_ip": None,
     "phone_stats": {},         # segundos de teléfono en horario de trabajo, por día
+    # en horario de trabajo, apps del teléfono que nunca se bloquean (además de llamadas, SMS e inicio)
+    "phone_essential": ["com.google.android.apps.maps", "com.waze", "com.google.android.apps.authenticator2",
+                        "com.azure.authenticator", "com.android.camera", "com.android.deskclock",
+                        "com.google.android.deskclock", "com.google.android.calendar",
+                        "com.ticktick.task"],
+    # sensor de presencia: el pomodoro corre solo mientras trabajas de verdad
+    "focus_sensor": True,
+    "focus_start_sec": 15,     # segundos trabajando (en una app de trabajo) para que arranque el pomodoro
+    "focus_idle_min": 2,       # sin tocar la compu (en otra cosa) → te fuiste: se pausa y no cuenta
+    "focus_idle_work_min": 5,  # …con una app de trabajo al frente (quizá estás leyendo)
+    "focus_distract_sec": 60,  # en algo que no toca durante el pomodoro → se minimiza y se pausa
+    "focus_nudge_min": [2, 5, 8],  # minutos de retraso para subir la presión (aviso, teléfono estricto, pantalla)
+    "focus_llm": True,         # preguntarle a la IA lo que las reglas no saben decidir
+    "focus_llm_model": "claude-haiku-5-5",
+    "focus_llm_per_hour": 20,
+    "focus_llm_per_day": 120,
+    "focus_stats": {},         # por día: segundos efectivos, de retraso, distraído y fuera
     # ventana
     "always_on_top": False,
     "widget_mode": False,

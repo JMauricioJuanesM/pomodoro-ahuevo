@@ -12,6 +12,39 @@ Se arma con un horario semanal, recordatorios, un widget redondo y control del t
 | **Descanso programado** | Bloquea la pantalla durante todo el bloque (p. ej. la comida). |
 | **Fuera de trabajo** | No corre el pomodoro. |
 
+## Sensor de presencia (trabajo efectivo)
+
+El pomodoro cuenta solo el trabajo de verdad. Al terminar un descanso, al arrancar la jornada o si lo
+pausas en horario de trabajo, **queda esperándote** y arranca solo cuando te ve trabajando: una app de
+trabajo al frente y usando teclado o mouse unos segundos. Mientras corre, si te vas (sin tocar la compu)
+o te distraes (YouTube de ocio, redes, juegos…), se pausa y **ese rato se devuelve al reloj**.
+
+Si tardas en arrancar, la presión sube por escalones (*Ajustes → Sensor de presencia*):
+
+| Retraso | Qué pasa |
+|---|---|
+| 2 min | Aviso en la compu y en el teléfono. |
+| 5 min | Teléfono en **modo estricto**: te saca al instante de lo que distrae y bloquea pronto lo demás; en la compu se minimiza lo que distrae. |
+| 8 min | En la compu, pantalla completa **«¿Arrancamos?»** (empezar, o decir en qué trabajas lejos de la compu: lo juzga la IA). El teléfono se bloquea en cuanto lo usas (salvo llamadas, mensajes, ajustes, banco y `phone_essential`). |
+
+En el teléfono, además, cualquier **juego** cuenta como app que distrae, y si vuelves a entrar a una app de
+la que te sacó (o al teléfono justo después de un bloqueo), ya no hay tiempo de gracia.
+
+Cómo sabe qué haces:
+
+- **Ventana al frente y tiempo sin tocar la compu**: la extensión «vigía» (`gnome-extension/`) deja
+  `focus.json` cada 2 s. Sin ella (p. ej. antes de volver a iniciar sesión tras actualizarla) solo se sabe
+  si estás en la compu, por D-Bus.
+- **Reglas** (`core/focus.py`): editores, terminales, PDF… son trabajo; Netflix, redes, juegos, distracción.
+- **IA** (`services/judge.py`) para lo dudoso, sobre todo páginas del navegador: `claude -p` con Haiku, sin
+  herramientas, ~700 tokens por consulta, varias ventanas por llamada, cada respuesta se recuerda en
+  `focus_cache.json` y hay tope por hora y por día. Si se equivoca, toca la línea del sensor en la ventana
+  del Pomodoro («¿sí es trabajo? toca aquí») y se recuerda para esa actividad. Una actividad del horario
+  puede llevar `"intent"` (p. ej. `"proyecto: app Android en Kotlin"`) para que la IA juzgue mejor.
+
+Las estadísticas del día (efectivo, retraso, distraído, fuera) salen en la ventana y al final de la jornada,
+y viajan al servidor con la señal de vida (`devices.desktop.info.focus`) para el bot.
+
 ## Uso
 
 ```bash

@@ -13,10 +13,16 @@ from concurrent.futures import ThreadPoolExecutor
 from ..config import save_config
 from ..constants import VIBRATION
 from ..paths import PANEL_CONFIG, PANEL_META, SYNC_FILE
+from ..core.timefmt import fmt
 from .system import notify, run
 
 APP_PKG = "com.mauriciojuanes.pomodoro"
 APP_GUARD = f"{APP_PKG}/{APP_PKG}.GuardService"
+# Lo que nunca se bloquea en horario de trabajo (además de `phone_essential`): inicio, llamadas, SMS, ajustes.
+ESSENTIAL = {APP_PKG, "com.miui.home", "com.mi.android.globallauncher", "com.google.android.apps.nexuslauncher",
+             "com.android.launcher3", "com.google.android.dialer", "com.android.phone", "com.android.incallui",
+             "com.google.android.apps.messaging", "com.android.mms", "com.android.contacts", "com.android.settings",
+             "com.miui.securitycenter", "com.android.systemui"}
 
 
 class Phone:
@@ -283,7 +289,8 @@ class Phone:
             self._later(delay, lambda: self.submit(self._lock_if_on))
 
     def working(self):
-        return self.app.phase == "work" and self.app.running
+        """¿Deberías estar trabajando? (también si el pomodoro está armado esperando a que empieces)"""
+        return self.app.on_duty()
 
     def _lock_if_on(self):
         if self.working() and self.ensure() and self.screen_on():
@@ -328,7 +335,18 @@ class Phone:
         self.app.after(0, lambda: self.app.add_phone_time(elapsed))
         fg = self.foreground()
         self.state = dict(self.state, app=fg)
+        strict = self.app.nudge   # sensor de presencia: cuánto llevas sin arrancar (0–3)
+        essential = fg in ESSENTIAL or fg in cfg.get("phone_essential", [])
+        if strict >= 3 and not essential:
+            self.on_since, self.warned = None, False
+            self._notify("🛑 Ya toca trabajar", "Llevas rato sin arrancar: el teléfono se bloquea. Ve a la compu.")
+            self._lock()
+            return
         if cfg["phone_distract"] and fg in cfg["phone_distracting"]:
+            if strict >= 2:   # modo estricto: sin tiempo de gracia
+                self.adb("shell", "input", "keyevent", "KEYCODE_HOME")
+                self._notify(f"📵 Fuera de {app_name(fg)}", "Modo estricto: llevas rato sin arrancar.")
+                return
             if self.distract_pkg != fg:
                 self.distract_pkg = fg
                 name = app_name(fg)
@@ -343,17 +361,20 @@ class Phone:
             return
         self.on_since = self.on_since or now
         mins = (now - self.on_since) / 60
-        if mins >= cfg["phone_work_lock_min"]:
+        warn_min, lock_min = cfg["phone_work_warn_min"], cfg["phone_work_lock_min"]
+        if strict >= 2 and not essential:
+            warn_min, lock_min = min(warn_min, 0.5), min(lock_min, 1.5)
+        if mins >= lock_min:
             self.on_since, self.warned = None, False
             secs = cfg["phone_read_sec"]
             self._warn_then("🔒 Deja el teléfono", f"Llevas {int(mins)} min en él en horario de trabajo.\n"
                                                   f"En {secs} s se bloquea.",
                             lambda: self.screen_on() and self._lock(), self.working)
             self.app.after(0, lambda: notify("Voy a bloquear tu teléfono", "Estabas en él durante el trabajo."))
-        elif mins >= cfg["phone_work_warn_min"] and not self.warned:
+        elif mins >= warn_min and not self.warned:
             self.warned = True
-            left = cfg["phone_work_lock_min"] - cfg["phone_work_warn_min"]
-            self._notify("👀 Estás en el teléfono", f"Es hora de trabajo. Si sigues, en {left} min lo bloqueo.")
+            left = lock_min - warn_min
+            self._notify("👀 Estás en el teléfono", f"Es hora de trabajo. Si sigues, en {fmt(left * 60)} lo bloqueo.")
 
     def shutdown(self):
         """Al salir de la app: quita el No molestar que pusimos nosotros."""

@@ -9,7 +9,7 @@ from ..core.timefmt import fmt
 from ..core.tips import activity_tip, pick_tip
 from ..services.shortcuts import disable_shortcuts, restore_shortcuts
 from ..services.system import notify, play_sound, poweroff
-from ..ui.overlays import BreakScreen
+from ..ui.overlays import BreakScreen, NudgeScreen
 
 SHARED_PHASES = ("work", "short", "long")   # fases que el teléfono puede mover
 
@@ -68,11 +68,11 @@ class TimerMixin:
         if self.running:
             self.remaining = self.end_time - time.time()
             self.running = False
+            if self.focus_on() and self.work_due():   # en horario de trabajo, pausar no es descansar
+                self.arm()
+            self.render()
         else:
-            self.end_time = time.time() + self.remaining
-            self.running = True
-            self.auto_date = dt.date.today()
-        self.render()
+            self.start_effective()
 
     def reset(self):
         if self.phase != "work" or self.shutdown_at:
@@ -88,6 +88,7 @@ class TimerMixin:
 
     # ---------- fases ----------
     def start_phase(self, phase, run_now=True):
+        self.disarm()
         self.phase = phase
         self.phase_title, self.phase_color = NAMES[phase], COLORS[phase]
         self.overtime = self.in_overtime()
@@ -125,6 +126,7 @@ class TimerMixin:
     def start_sched_break(self, aid, bstart, bend, key):
         """Descanso del horario (p. ej. COMER): dura lo que dura el bloque."""
         self.sched_key = key
+        self.disarm()
         a = activity(self.cfg, aid)
         self.resume_work = None
         self.done_in_cycle = 0
@@ -188,9 +190,15 @@ class TimerMixin:
         else:
             aid = cell_activity(self.cfg, dt.datetime.now())
             auto = self.cfg["auto_start_work"] and is_work(act_kind(self.cfg, aid))
-            self.start_phase("work", run_now=auto)
-            msg = (f"Ahora toca {act_label(self.cfg, aid)}: pomodoro de {fmt(self.phase_total)}." if auto
-                   else "Pulsa Iniciar cuando quieras.")
+            armed = auto and self.focus_on()   # arranca cuando te vea trabajando, no antes
+            self.start_phase("work", run_now=auto and not armed)
+            if armed:
+                self.arm()
+                msg = f"Ahora toca {act_label(self.cfg, aid)}. El pomodoro arranca en cuanto te pongas a trabajar."
+            elif auto:
+                msg = f"Ahora toca {act_label(self.cfg, aid)}: pomodoro de {fmt(self.phase_total)}."
+            else:
+                msg = "Pulsa Iniciar cuando quieras."
         notify(title, msg)
         self.phone.break_over(msg)
         self.show_main()
@@ -211,13 +219,15 @@ class TimerMixin:
                 "remaining": None if self.running else round(self.remaining), "total": round(self.phase_total),
                 "done_in_cycle": self.done_in_cycle, "overtime": self.overtime,
                 "skippable": self.break_skippable, "shutdown": bool(self.shutdown_at),
+                "arming": self.arming_since is not None and self.phase == "work", "nudge": self.nudge,
+                "arming_since": round(self.arming_since) if self.arming_since else None,
                 "stats": {"day": today, "count": self.cfg["stats"].get(today, 0)}}
 
     def apply_remote_timer(self, t):
         """El teléfono inició, pausó, saltó o empezó un descanso: hacer lo mismo aquí."""
         if self.shutdown_at or self.phase not in SHARED_PHASES or t.get("phase") not in SHARED_PHASES:
             return False
-        if self.overlay and not isinstance(self.overlay, BreakScreen):   # fin de jornada / recordatorio
+        if self.overlay and not isinstance(self.overlay, (BreakScreen, NudgeScreen)):   # fin de jornada / recordatorio
             return False
         remaining = t["end_time"] - time.time() if t["running"] else t["remaining"]
         if remaining is None or remaining <= 0:
@@ -233,11 +243,17 @@ class TimerMixin:
         self.warned = self.relock_warned = self.break_free = False
         if phase == "work":
             self.auto_date = dt.date.today()   # que la jornada no "arranque sola" encima de esto
-            if self.overlay:
+            if self.running:
+                self.disarm()
+            elif t.get("arming") and self.focus_on():   # p. ej. al reiniciar la app: seguir esperándote
+                self.arm()
+                self.arming_since = t.get("arming_since") or self.arming_since
+            if isinstance(self.overlay, BreakScreen):
                 self.close_overlay()
                 self.show_main()
             self.render()
         else:
+            self.disarm()
             self.set_break_skip(focus=self.focus_now())
             self.current_tip = pick_tip(self.cfg, phase)
             self.break_context = "Descanso iniciado desde el teléfono."
@@ -269,13 +285,14 @@ class TimerMixin:
         if int(now) != self.last_second:  # lo que basta revisar una vez por segundo
             self.last_second = int(now)
             self.check_day()
+            self.focus_tick()
             self.check_reminders()
             self.process_reminders()
             if self.active_reminder and now > self.active_reminder[1]:
                 self.active_reminder = None
             if now - self.last_guard > 15:
                 self.last_guard = now
-                self.phone.tick(self.phase == "work" and self.running)
+                self.phone.tick(self.on_duty())
             self.phone_prompt()
             self.sync.tick()
 

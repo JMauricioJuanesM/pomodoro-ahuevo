@@ -18,6 +18,11 @@ data class Timer(
     val doneInCycle: Int = 0,
     val overtime: Boolean = false,
     val skippable: Boolean = false,
+    // Sensor de presencia de la compu: el pomodoro espera a que empieces a trabajar (no corre aún) y
+    // cuánta presión lleva por la tardanza (0–3).
+    val arming: Boolean = false,
+    val nudge: Int = 0,
+    val armingSince: Double? = null,
 ) {
     fun remainingAt(now: Double): Double = if (running) (endTime ?: now) - now else remaining ?: total
 
@@ -26,6 +31,7 @@ data class Timer(
         .put("end_time", endTime ?: JSONObject.NULL).put("remaining", remaining ?: JSONObject.NULL)
         .put("total", total).put("done_in_cycle", doneInCycle).put("overtime", overtime)
         .put("skippable", skippable).put("shutdown", false)
+        .put("arming", arming).put("nudge", nudge).put("arming_since", armingSince ?: JSONObject.NULL)
 
     companion object {
         fun fromJson(o: JSONObject) = Timer(
@@ -39,6 +45,9 @@ data class Timer(
             doneInCycle = o.optInt("done_in_cycle"),
             overtime = o.optBoolean("overtime"),
             skippable = o.optBoolean("skippable"),
+            arming = o.optBoolean("arming"),
+            nudge = o.optInt("nudge"),
+            armingSince = if (o.isNull("arming_since")) null else o.optDouble("arming_since"),
         )
     }
 }

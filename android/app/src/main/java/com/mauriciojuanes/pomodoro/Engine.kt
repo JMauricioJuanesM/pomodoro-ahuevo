@@ -51,6 +51,10 @@ object Engine {
     /** ¿Le toca al teléfono mover el temporizador? (la compu no está) */
     val authority get() = !desktopAlive
     fun working() = timer.phase == "work" && timer.running
+    /** ¿Deberías estar trabajando? También si la compu está esperando a que empieces (sensor de presencia). */
+    fun onDuty() = timer.phase == "work" && (timer.running || timer.arming && !authority)
+    /** Presión por tardar en arrancar, según la compu (0–3). */
+    fun nudge() = if (onDuty() && !timer.running) timer.nudge else 0
     fun remaining() = timer.remainingAt(now())
 
     // ---------- reglas (iguales a las de la compu) ----------
@@ -237,7 +241,8 @@ object Engine {
             val rem = timer.remaining ?: timer.total
             Store.autoDate = Store.today()
             if (inOvertime()) Store.endDayDate = Store.today()   // seguir = aceptar las horas extra
-            set(timer.copy(running = true, endTime = now() + rem, remaining = null))
+            set(timer.copy(running = true, endTime = now() + rem, remaining = null, arming = false, nudge = 0,
+                armingSince = null))
         }
     }
 

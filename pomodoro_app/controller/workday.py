@@ -44,9 +44,15 @@ class WorkdayMixin:
         if (self.cfg["autostart"] and self.auto_date != today and idle and b and b[0] <= now < b[1]
                 and is_work(act_kind(self.cfg, aid)) and self.sync.ready()):
             self.auto_date = today
-            self.start_phase("work")
-            notify("Arrancó tu jornada", f"Ahora toca {act_label(self.cfg, aid)}. Primer pomodoro de "
-                                         f"{fmt(self.phase_total)}. ¡A darle!")
+            armed = self.focus_on()
+            self.start_phase("work", run_now=not armed)
+            if armed:
+                self.arm()
+                notify("Arrancó tu jornada", f"Ahora toca {act_label(self.cfg, aid)}. El pomodoro corre en cuanto "
+                                             "te pongas a trabajar. ¡A darle!")
+            else:
+                notify("Arrancó tu jornada", f"Ahora toca {act_label(self.cfg, aid)}. Primer pomodoro de "
+                                             f"{fmt(self.phase_total)}. ¡A darle!")
             self.show_main()
         # Fin de la jornada.
         if self.in_overtime() and self.overtime_ok_date != today and self.phase == "work" and not self.overlay:
@@ -62,6 +68,7 @@ class WorkdayMixin:
 
     def show_endday(self):
         self.running = False
+        self.disarm()
         if self.cfg["sound"]:
             play_sound()
         b = self.bounds()
