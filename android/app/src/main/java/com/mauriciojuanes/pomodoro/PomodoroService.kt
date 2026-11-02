@@ -120,6 +120,8 @@ class PomodoroService : Service() {
                 .put("fg_cat", (GuardService.instance?.foreground ?: "").takeIf { it.isNotEmpty() && screenOn }
                     ?.let { Apps.category(this, it) } ?: "")
                 .put("wa_used_sec", WhatsApp.usedSec())
+                // Solo el modo que detectó (chat / group / status) y si leyó el encabezado; nunca el nombre del chat.
+                .put("wa_mode", WhatsApp.current() + if (WhatsApp.chatTitle().isNotEmpty()) "+titulo" else "")
                 .put("activity", Policy.at().let { "${it.label}${if (it.phone) "" else " (sin vigilar el teléfono)"}" })
                 .put("update", Updater.status)
                 .put("install_ok", packageManager.canRequestPackageInstalls()))
