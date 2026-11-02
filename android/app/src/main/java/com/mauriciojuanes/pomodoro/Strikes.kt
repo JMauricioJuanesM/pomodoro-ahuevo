@@ -23,7 +23,7 @@ object Strikes {
     private const val CONFIRM_MS = 30_000L
     val NEVER = setOf("com.whatsapp", "com.whatsapp.w4b", "com.android.vending")
     private val INSTALLERS = setOf("com.android.packageinstaller", "com.google.android.packageinstaller",
-        "com.miui.packageinstaller", "com.miui.securitycenter")
+        "com.miui.packageinstaller", "com.miui.global.packageinstaller", "com.miui.securitycenter")
     private val CONFIRM = setOf("aceptar", "ok", "desinstalar", "uninstall", "eliminar", "confirmar", "sí", "si")
     private val handler = Handler(Looper.getMainLooper())
     @Volatile private var pendingPkg: String? = null

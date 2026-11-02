@@ -32,7 +32,7 @@ object Updater {
     private val io = Executors.newSingleThreadExecutor()
     private val handler = Handler(Looper.getMainLooper())
     private val INSTALLERS = setOf("com.android.packageinstaller", "com.google.android.packageinstaller",
-        "com.miui.packageinstaller", "com.miui.securitycenter")
+        "com.miui.packageinstaller", "com.miui.global.packageinstaller", "com.miui.securitycenter")
     private val CONFIRM = setOf("actualizar", "instalar", "update", "install", "continuar", "continue", "siguiente",
         "next", "aceptar", "ok", "listo", "done")
     private const val CONFIRM_MS = 90_000L
