@@ -69,6 +69,25 @@ object BankMode {
         }
     }
 
+    private var lastRebind = 0L
+
+    /**
+     * MIUI no vuelve a enlazar la accesibilidad tras actualizar la app (sigue marcada, pero no corre): si pasa,
+     * se quita y se vuelve a poner. Lo llama [PomodoroService] cada segundo; actúa a lo más cada 2 min.
+     */
+    fun rebindIfNeeded(ctx: Context) {
+        if (GuardService.instance != null || Store.bankSince > 0 || !Blocks.canWrite()) return
+        val now = System.currentTimeMillis()
+        if (now - lastRebind < 120_000 || android.os.SystemClock.elapsedRealtime() - Process.getStartElapsedRealtime() < 30_000) return
+        lastRebind = now
+        val services = enabledServices(ctx)
+        if (services.none { it.equals(me(ctx), true) }) return   // la apagaste a propósito (o el banco): no tocar
+        val others = services.filterNot { it.equals(me(ctx), true) }
+        Settings.Secure.putString(ctx.contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES, others.joinToString(":"))
+        Settings.Secure.putString(ctx.contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES, (others + me(ctx)).joinToString(":"))
+        Settings.Secure.putString(ctx.contentResolver, Settings.Secure.ACCESSIBILITY_ENABLED, "1")
+    }
+
     private fun hasUsageAccess(ctx: Context): Boolean {
         val ops = ctx.getSystemService(AppOpsManager::class.java)
         return ops.unsafeCheckOpNoThrow(AppOpsManager.OPSTR_GET_USAGE_STATS, Process.myUid(), ctx.packageName) ==

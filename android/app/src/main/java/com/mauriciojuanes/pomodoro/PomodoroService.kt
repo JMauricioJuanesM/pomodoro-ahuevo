@@ -83,6 +83,7 @@ class PomodoroService : Service() {
         Engine.tick()
         Blocks.tick()
         BankMode.tick(this)
+        BankMode.rebindIfNeeded(this)
         SelfDefense.tick(this)
         val working = Engine.onDuty()
         val screenOn = getSystemService(PowerManager::class.java).isInteractive
