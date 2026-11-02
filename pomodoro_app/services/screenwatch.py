@@ -131,6 +131,19 @@ class ScreenWatch:
         except OSError:
             pass
 
+    def report_skip(self, action, reason):
+        """Te saltaste el pomodoro (con justificación): el bot se entera."""
+        body = json.dumps({"source": "desktop", "level": "skip", "app": f"pomodoro.{action}", "app_name": action,
+                           "action": action, "reason": reason}).encode()
+        threading.Thread(target=lambda: self._try(lambda: self._req("POST", "/api/alert", body)), daemon=True).start()
+
+    @staticmethod
+    def _try(fn):
+        try:
+            fn()
+        except (OSError, ValueError, urllib.error.URLError):
+            pass
+
     def _report(self, level, app, name):
         """Avisa al bot (alerta) y cancela los desbloqueos vigentes del teléfono."""
         try:

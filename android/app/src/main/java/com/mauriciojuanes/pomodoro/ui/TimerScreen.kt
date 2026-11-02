@@ -21,13 +21,21 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.ui.Alignment
@@ -45,6 +53,7 @@ import androidx.compose.ui.unit.sp
 import com.mauriciojuanes.pomodoro.Engine
 import com.mauriciojuanes.pomodoro.Store
 import com.mauriciojuanes.pomodoro.Sync
+import kotlinx.coroutines.delay
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
@@ -116,10 +125,15 @@ fun TimerScreen(missingPerms: Int, openSettings: () -> Unit) {
             textAlign = TextAlign.Center, modifier = Modifier.padding(horizontal = 12.dp).height(40.dp))
         VSpace(8)
 
-        // Controles
+        // Controles (pausar, reiniciar y descanso en horario de trabajo piden justificarse: SkipDialog)
+        var skip by remember { mutableStateOf<String?>(null) }
+        skip?.let { SkipDialog(it) { skip = null } }
+        fun guarded(action: String, f: () -> Unit) {
+            if (Engine.frictionNeeded()) skip = action else f()
+        }
         if (work) {
             Button(
-                onClick = { Engine.toggle() },
+                onClick = { if (t.running) guarded("pause") { Engine.toggle() } else Engine.toggle() },
                 modifier = Modifier.fillMaxWidth().height(60.dp),
                 shape = RoundedCornerShape(30.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = anim, contentColor = onColor(accent)),
@@ -130,8 +144,8 @@ fun TimerScreen(missingPerms: Int, openSettings: () -> Unit) {
             }
             VSpace(10)
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Tonal("Reiniciar", Modifier.weight(1f), { Icon(Icons.Filled.Refresh, null, Modifier.size(20.dp)) }) { Engine.reset() }
-                Tonal("Descanso ya", Modifier.weight(1f), { Text("☕", fontSize = 16.sp) }) { Engine.breakNow() }
+                Tonal("Reiniciar", Modifier.weight(1f), { Icon(Icons.Filled.Refresh, null, Modifier.size(20.dp)) }) { guarded("reset") { Engine.reset() } }
+                Tonal("Descanso ya", Modifier.weight(1f), { Text("☕", fontSize = 16.sp) }) { guarded("break") { Engine.breakNow() } }
             }
         } else if (t.skippable) {
             Tonal("Saltar descanso", Modifier.fillMaxWidth(), { Icon(SkipIcon, null, Modifier.size(20.dp)) }) { Engine.skip() }
@@ -163,6 +177,59 @@ fun TimerScreen(missingPerms: Int, openSettings: () -> Unit) {
         }
         VSpace(24)
     }
+}
+
+private const val SKIP_PHRASE = "Es necesario de verdad, no estoy evitando el trabajo"
+private const val SKIP_MIN_REASON = 40
+
+/**
+ * Saltarse el pomodoro en horario de trabajo: razón de al menos [SKIP_MIN_REASON] letras, la frase
+ * [SKIP_PHRASE] escrita a mano, una espera que crece con cada salto del día y un tope diario. El bot se
+ * entera con la razón.
+ */
+@Composable
+private fun SkipDialog(action: String, onDismiss: () -> Unit) {
+    val left = Engine.skipsLeft()
+    var secs by remember { mutableIntStateOf(Engine.skipWaitSec()) }
+    var reason by remember { mutableStateOf("") }
+    var phrase by remember { mutableStateOf("") }
+    LaunchedEffect(Unit) {
+        while (secs > 0) {
+            delay(1000)
+            secs--
+        }
+    }
+    val what = when (action) {
+        "pause" -> "pausar"
+        "reset" -> "reiniciar"
+        else -> "irte a descanso"
+    }
+    val n = reason.trim().length
+    val ok = left > 0 && secs == 0 && n >= SKIP_MIN_REASON && phrase.trim().equals(SKIP_PHRASE, ignoreCase = true)
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("¿De verdad vas a $what?") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                if (left == 0) {
+                    Text("Hoy ya usaste todos tus saltos desde el teléfono. Si es una emergencia real, hazlo desde la compu.")
+                } else {
+                    Text("Es horario de trabajo. Te quedan $left hoy y tu bot se va a enterar con tu razón.")
+                    OutlinedTextField(reason, { reason = it }, label = { Text("¿Por qué es absolutamente necesario?") },
+                        minLines = 2, modifier = Modifier.fillMaxWidth(),
+                        supportingText = { Text("$n/$SKIP_MIN_REASON") })
+                    Text("Escribe: «$SKIP_PHRASE»", color = Muted, fontSize = 13.sp)
+                    OutlinedTextField(phrase, { phrase = it }, singleLine = false, modifier = Modifier.fillMaxWidth())
+                }
+            }
+        },
+        confirmButton = {
+            if (left > 0) TextButton(onClick = { Engine.skipConfirmed(action, reason.trim()); onDismiss() }, enabled = ok) {
+                Text(if (secs > 0) "Espera $secs s" else "Sí, $what")
+            }
+        },
+        dismissButton = { Button(onClick = onDismiss) { Text("Mejor sigo trabajando") } },
+    )
 }
 
 private fun armedText(nudge: Int): String = when (nudge) {

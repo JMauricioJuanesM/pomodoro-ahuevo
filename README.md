@@ -45,6 +45,15 @@ Cómo sabe qué haces:
 Las estadísticas del día (efectivo, retraso, distraído, fuera) salen en la ventana y al final de la jornada,
 y viajan al servidor con la señal de vida (`devices.desktop.info.focus`) para el bot.
 
+## Saltarse el pomodoro (con fricción)
+
+En horario de trabajo (no en horas extra), **descanso ya**, **reiniciar** y **pausar** (en la compu, solo
+sin el sensor: con él, pausar únicamente deja el pomodoro esperándote) no son de un toque: piden una razón
+de al menos 40 letras, escribir a mano «Es necesario de verdad, no estoy evitando el trabajo» y esperar
+45 s, 90 s, 180 s… según cuántas veces llevas hoy. Hay tope diario (`skips_per_day` en la compu,
+`phone_skips_per_day` en el teléfono, 2 cada uno) y el bot se entera con tu razón. En el teléfono las
+acciones de la notificación desaparecen en horario de trabajo. Se apaga con `skip_friction: false`.
+
 ## Uso
 
 ```bash
@@ -68,6 +77,18 @@ Mientras la compu está prendida, ella manda y el teléfono la refleja; lo que h
 (iniciar, pausar, descanso, saltar) se aplica en la compu al instante. Con la compu apagada, el teléfono
 lleva la jornada solo. Si la app está viva, ADB deja de repetir sus avisos; si MIUI la mata, la compu
 la revive por ADB y le da sus permisos (accesibilidad, No molestar, batería).
+
+**Vigilancia de contenido en el teléfono** (accesibilidad, `ScreenWatch` + `AdultDb` + `Strikes`): revisa
+todas las apps, también las nuevas. Captura cuando cambia la pantalla (otra app, scroll, contenido nuevo; a
+lo más una cada 2.5 s) y cada 6 s en apps de video/redes o 15 s en las demás; si la pantalla se ve igual a
+la última revisada (huella de 64 bits) no la manda. Sin capturas, compara el nombre/paquete de cada app y la
+barra de direcciones de los navegadores con una lista de contenido sexual (ampliable con
+`phone_adult_apps` y `phone_adult_words`). Al detectar algo: te saca, bloquea y avisa; la app suma una
+advertencia y a la segunda en una semana (`phone_uninstall_strikes`) se desinstala sola (la accesibilidad
+pulsa «Aceptar»). Nunca desinstala WhatsApp, apps del sistema, el navegador predeterminado, el banco ni
+`phone_never_uninstall`. No revisa videollamadas (audio en modo llamada, pantallas de llamada de
+WhatsApp), los mensajes de «ver una vez» ni la cámara. Las apps instaladas que estén en la lista llegan con
+una advertencia; si ya tenían, se desinstalan al llegar.
 
 ```bash
 ./android/build.sh        # compila en el VPS e instala por ADB

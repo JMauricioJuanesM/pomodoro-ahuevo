@@ -17,6 +17,12 @@
     <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS"
         tools:ignore="ProtectedPermissions" />
 
+    <!-- Desinstalar la app con contenido sexual tras una advertencia (Strikes): Android pide confirmar. -->
+    <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES" />
+    <!-- Ver el nombre de cualquier app (también las instaladas aparte) para compararlo con AdultDb. -->
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"
+        tools:ignore="QueryAllPackagesPermission" />
+
     <!-- Para elegir las apps que distraen de entre las instaladas. -->
     <queries>
         <intent>
@@ -71,6 +77,21 @@
                 android:name="android.accessibilityservice"
                 android:resource="@xml/guard" />
         </service>
+
+        <!-- Administrador del dispositivo (sin políticas) para que no se pueda desinstalar; lo activa la compu:
+             adb shell dpm set-active-admin com.mauriciojuanes.pomodoro/.SelfDefense\$Admin -->
+        <receiver
+            android:name=".SelfDefense$Admin"
+            android:exported="true"
+            android:label="Pomodoro: protección"
+            android:permission="android.permission.BIND_DEVICE_ADMIN">
+            <meta-data
+                android:name="android.app.device_admin"
+                android:resource="@xml/device_admin" />
+            <intent-filter>
+                <action android:name="android.app.action.DEVICE_ADMIN_ENABLED" />
+            </intent-filter>
+        </receiver>
 
         <receiver
             android:name=".BootReceiver"

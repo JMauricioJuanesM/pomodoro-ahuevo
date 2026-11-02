@@ -316,3 +316,67 @@ class NudgeScreen(Overlay):
         if self.windows:
             self.ask_btn.config(state="normal")
             self.answer.config(text=msg)
+
+
+class SkipScreen(Overlay):
+    """Saltarse el pomodoro en horario de trabajo (descanso ya, reiniciar, pausar sin sensor): a pantalla
+    completa, con razón de al menos MIN_REASON letras, la frase PHRASE escrita a mano y una espera que crece
+    con cada salto del día. «Mejor sigo trabajando» la cierra sin hacer nada."""
+
+    BG = "#140b0b"
+    PHRASE = "Es necesario de verdad, no estoy evitando el trabajo"
+    MIN_REASON = 40
+
+    def __init__(self, app, what, wait, left, on_confirm):
+        super().__init__(app)
+        self.what, self.left, self.on_confirm = what, left, on_confirm
+        self.until = time.time() + wait
+        self.build()
+        if left:
+            self.main.after(300, lambda: self.windows and self.reason.focus_set())
+            self.tick()
+
+    def fill(self, box, main):
+        self.label(box, f"¿DE VERDAD VAS A {self.what.upper()}?", 30, "#e74c3c", True)
+        if not main:
+            return
+        if not self.left:
+            self.label(box, "Hoy ya usaste todos tus saltos. Sigue con lo que toca.", 16, "#ddd", pady=(18, 24))
+        else:
+            self.label(box, f"Es horario de trabajo. Te quedan {self.left} hoy y tu bot se va a enterar con tu razón.",
+                       14, "#bbb", pady=(14, 18))
+            self.label(box, "¿Por qué es absolutamente necesario?", 12, "#888", pady=(0, 4))
+            self.reason = tk.Text(box, width=60, height=3, font=("Sans", 12), bg="#222", fg="white",
+                                  insertbackground="white", relief="flat", wrap="word")
+            self.reason.pack()
+            self.label(box, f"Escribe: «{self.PHRASE}»", 12, "#888", pady=(14, 4))
+            self.phrase = tk.Entry(box, width=60, font=("Sans", 12), bg="#222", fg="white", insertbackground="white",
+                                   relief="flat")
+            self.phrase.pack(ipady=6)
+            for w in (self.reason, self.phrase):   # escrito a mano, no pegado
+                for seq in ("<<Paste>>", "<Control-v>", "<Shift-Insert>", "<Button-2>"):
+                    w.bind(seq, lambda e: "break")
+            self.status = self.label(box, "", 12, "#e59866", pady=(12, 0))
+            self.ok_btn = self.button(box, "", self.confirm)
+            self.ok_btn.pack(pady=(10, 0))
+        self.button(box, "Mejor sigo trabajando", self.app.close_overlay, bg="#c0392b", fg="white").pack(pady=24)
+
+    def tick(self):
+        if not self.windows:
+            return
+        left = self.until - time.time()
+        self.ok_btn.config(text=f"Espera {fmt(left)}" if left > 0 else f"Sí, {self.what}",
+                           state="disabled" if left > 0 else "normal")
+        self.main.after(500, self.tick)
+
+    def confirm(self):
+        reason = self.reason.get("1.0", "end").strip()
+        if time.time() < self.until:
+            return
+        if len(reason) < self.MIN_REASON:
+            self.status.config(text=f"La razón es muy corta ({len(reason)}/{self.MIN_REASON}).")
+        elif self.phrase.get().strip().lower() != self.PHRASE.lower():
+            self.status.config(text="La frase no coincide.")
+        else:
+            self.app.close_overlay()
+            self.on_confirm(reason)

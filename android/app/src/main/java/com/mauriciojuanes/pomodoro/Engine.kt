@@ -232,11 +232,39 @@ object Engine {
         if (dirty) Store.setFired(fired)
     }
 
+    // ---------- saltarse el pomodoro: con mucha fricción ----------
+    /**
+     * Pausar, reiniciar o irte a descanso en horario de trabajo no es de un toque: hay que decir por qué,
+     * escribir una frase y esperar (cada vez más), a lo más `phone_skips_per_day` veces al día, y el bot se
+     * entera. Fuera del horario (o en horas extra) no hay fricción.
+     */
+    fun frictionNeeded(): Boolean {
+        if (timer.phase != "work" || !flag("skip_friction", true) || inOvertime()) return false
+        return Sched.isWork(sched.kind(sched.cell(LocalDateTime.now()))) || onDuty()
+    }
+
+    fun skipsLeft() = maxOf(0, num("phone_skips_per_day", 2.0).toInt() - Store.skipsToday)
+
+    /** Segundos de espera antes de poder confirmar: 45, 90, 180… según cuántas llevas hoy. */
+    fun skipWaitSec() = 45 shl minOf(Store.skipsToday, 4)
+
+    /** Se justificó y esperó: se hace, se cuenta y se le avisa al bot. */
+    fun skipConfirmed(action: String, reason: String) {
+        Store.skipsToday = Store.skipsToday + 1
+        Sync.alert("skip", "pomodoro.$action", action, action, reason)
+        when (action) {
+            "pause" -> pauseNow()
+            "reset" -> resetNow()
+            else -> breakNowUnchecked()
+        }
+    }
+
     // ---------- lo que haces tú en el teléfono ----------
+    /** Iniciar siempre se puede; pausar en horario de trabajo pasa por [skipConfirmed]. */
     fun toggle() {
         if (timer.phase != "work") return
         if (timer.running) {
-            set(timer.copy(running = false, endTime = null, remaining = remaining()))
+            if (!frictionNeeded()) pauseNow()
         } else {
             val rem = timer.remaining ?: timer.total
             Store.autoDate = Store.today()
@@ -246,13 +274,25 @@ object Engine {
         }
     }
 
+    private fun pauseNow() {
+        if (timer.phase == "work" && timer.running) set(timer.copy(running = false, endTime = null, remaining = remaining()))
+    }
+
     fun reset() {
+        if (!frictionNeeded()) resetNow()
+    }
+
+    private fun resetNow() {
         if (timer.phase != "work") return
         val total = duration("work", inOvertime())
         set(timer.copy(running = false, endTime = null, remaining = total, total = total))
     }
 
     fun breakNow() {
+        if (!frictionNeeded()) breakNowUnchecked()
+    }
+
+    private fun breakNowUnchecked() {
         if (timer.phase == "work") startBreak(false)
     }
 

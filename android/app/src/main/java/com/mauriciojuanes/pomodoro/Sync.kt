@@ -74,7 +74,7 @@ object Sync {
                 pending.entries.first().toPair()
             }
             try {
-                when (kind) {
+                when (kind.substringBefore('#')) {
                     "timer" -> req("PUT", "/api/timer", JSONObject().put("source", "phone").put("timer", body))
                     "config" -> req("PUT", "/api/config", JSONObject().put("source", "phone").put("config", body))
                     "blocks" -> req("PUT", "/api/blocks", JSONObject().put("source", "phone").put("blocks", body))
@@ -104,9 +104,12 @@ object Sync {
 
     fun pushBlocks(b: JSONObject) = queue("blocks", b)
 
-    /** Se detectó contenido en pantalla ([ScreenWatch]): queda registrado y el bot te escribe. */
-    fun alert(level: String, pkg: String, name: String, action: String) = queue("alert", JSONObject()
-        .put("level", level).put("app", pkg).put("app_name", name).put("action", action))
+    /**
+     * Se detectó contenido en pantalla ([ScreenWatch]) o te saltaste el pomodoro: queda registrado y el
+     * bot te escribe. Cada alerta va aparte (no se pisan como el temporizador).
+     */
+    fun alert(level: String, pkg: String, name: String, action: String, reason: String = "") = queue("alert#${System.nanoTime()}", JSONObject()
+        .put("level", level).put("app", pkg).put("app_name", name).put("action", action).put("reason", reason))
 
     /** Manda una captura reducida a analizar (en un hilo de fondo). Regresa "explicit" | "suggestive" | "none". */
     fun checkScreen(jpeg: ByteArray): String {

@@ -1,6 +1,10 @@
 package com.mauriciojuanes.pomodoro
 
 import android.accessibilityservice.AccessibilityService
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.os.Handler
 import android.os.Looper
@@ -11,7 +15,7 @@ import android.view.inputmethod.InputMethodManager
 /**
  * Vigilancia (lo mismo que hacía la compu por ADB, pero desde el teléfono):
  *  - a cualquier hora, si abres una app que el Panel ADB tiene bloqueada, te saca de ella ([Blocks]);
- *  - a cualquier hora, revisa lo que se ve en las apps de riesgo ([ScreenWatch]);
+ *  - a cualquier hora, revisa lo que se ve en pantalla y las apps que instalas ([ScreenWatch], [Strikes]);
  * y durante el trabajo (también si la compu está esperando a que empieces, ver [Engine.onDuty]):
  *  - si abres una app que distrae (la lista, o cualquier juego), avisa y a los pocos segundos te manda al
  *    inicio; si vuelves a entrar poco después, te saca al instante, y a la tercera bloquea el teléfono;
@@ -37,8 +41,8 @@ class GuardService : AccessibilityService() {
     private var lastStrictWarn = 0L
     private val essentialBase by lazy {
         val pm = packageManager
-        val home = pm.queryIntentActivities(android.content.Intent(android.content.Intent.ACTION_MAIN)
-            .addCategory(android.content.Intent.CATEGORY_HOME), 0).map { it.activityInfo.packageName }
+        val home = pm.queryIntentActivities(Intent(Intent.ACTION_MAIN)
+            .addCategory(Intent.CATEGORY_HOME), 0).map { it.activityInfo.packageName }
         val dialer = getSystemService(android.telecom.TelecomManager::class.java)?.defaultDialerPackage
         val sms = android.provider.Telephony.Sms.getDefaultSmsPackage(this)
         (home + listOfNotNull(dialer, sms, packageName) + ESSENTIAL).toSet()
@@ -63,23 +67,39 @@ class GuardService : AccessibilityService() {
         if (!PomodoroService.running) PomodoroService.start(this)
         handler.post(loop)
         screen = ScreenWatch(this).also { it.start() }
+        registerReceiver(installs, IntentFilter(Intent.ACTION_PACKAGE_ADDED).apply { addDataScheme("package") })
+    }
+
+    /** Apps nuevas (o reinstaladas): se revisan contra la lista de contenido sexual. */
+    private val installs = object : BroadcastReceiver() {
+        override fun onReceive(c: Context, i: Intent) {
+            val pkg = i.data?.schemeSpecificPart ?: return
+            if (!i.getBooleanExtra(Intent.EXTRA_REPLACING, false)) Strikes.onInstalled(this@GuardService, pkg)
+        }
     }
 
     override fun onDestroy() {
         instance = null
         handler.removeCallbacks(loop)
         screen?.stop()
+        runCatching { unregisterReceiver(installs) }
         super.onDestroy()
     }
 
     override fun onInterrupt() {}
 
     override fun onAccessibilityEvent(e: AccessibilityEvent?) {
-        if (e?.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
-        val pkg = e.packageName?.toString() ?: return
+        val pkg = e?.packageName?.toString() ?: return
+        val state = e.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
+        SelfDefense.onEvent(this, pkg, state)
+        if (!state) {   // scroll o contenido nuevo
+            if (pkg !in ignored) screen?.onContent(pkg)
+            return
+        }
+        Strikes.onWindow(this, pkg)
         if (pkg in ignored) return
         fg = pkg
-        screen?.onForeground(pkg)
+        screen?.onForeground(pkg, e.className?.toString() ?: "")
         if (BankMode.isBank(pkg)) {   // el banco desconfía de la accesibilidad: nos apagamos mientras lo usas
             BankMode.enter(this)
             return

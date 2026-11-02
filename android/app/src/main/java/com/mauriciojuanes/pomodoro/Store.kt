@@ -97,6 +97,16 @@ object Store {
         get() = p.getLong("bank_since", 0L)
         set(v) = p.edit().putLong("bank_since", v).apply()
 
+    /** Advertencias por contenido sexual, por app: paquete → [cuándo]. Ver [Strikes]. */
+    var strikes: JSONObject
+        get() = runCatching { JSONObject(str("strikes", "{}")) }.getOrDefault(JSONObject())
+        set(v) = put("strikes", v.toString())
+
+    /** Veces que hoy pausaste, reiniciaste o te fuiste a descanso en horario de trabajo (ver [Engine.frictionNeeded]). */
+    var skipsToday: Int
+        get() = if (str("skips_day") == today()) p.getInt("skips", 0) else 0
+        set(v) = p.edit().putString("skips_day", today()).putInt("skips", v).apply()
+
     var blocksRevSeen: Int
         get() = p.getInt("blocks_rev_seen", 0)
         set(v) = p.edit().putInt("blocks_rev_seen", v).apply()

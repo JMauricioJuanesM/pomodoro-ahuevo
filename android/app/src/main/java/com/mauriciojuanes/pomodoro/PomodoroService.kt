@@ -55,6 +55,7 @@ class PomodoroService : Service() {
             ACTION_TOGGLE -> Engine.toggle()
             ACTION_BREAK -> Engine.breakNow()
             ACTION_SKIP -> Engine.skip()
+            ACTION_RELEASE -> SelfDefense.release(this)   // solo la compu (adb tiene DUMP): ver SelfDefense
         }
         return START_STICKY
     }
@@ -70,6 +71,7 @@ class PomodoroService : Service() {
         Engine.tick()
         Blocks.tick()
         BankMode.tick(this)
+        SelfDefense.tick(this)
         val working = Engine.onDuty()
         val screenOn = getSystemService(PowerManager::class.java).isInteractive
         if (working && screenOn) Store.setCount("phone_stats", Store.count("phone_stats") + 1)
@@ -140,9 +142,11 @@ class PomodoroService : Service() {
         } else {
             b.setShowWhen(false)
         }
-        if (t.phase == "work") {
+        if (t.phase == "work" && !Engine.frictionNeeded()) {
             b.addAction(Notification.Action.Builder(null, if (t.running) "Pausar" else "Iniciar", action(ACTION_TOGGLE, 1)).build())
             b.addAction(Notification.Action.Builder(null, "Descanso ya", action(ACTION_BREAK, 2)).build())
+        } else if (t.phase == "work" && !t.running) {   // en horario de trabajo, desde aquí solo se arranca
+            b.addAction(Notification.Action.Builder(null, "Iniciar", action(ACTION_TOGGLE, 1)).build())
         } else if (t.skippable) {
             b.addAction(Notification.Action.Builder(null, "Saltar descanso", action(ACTION_SKIP, 3)).build())
         }
@@ -154,6 +158,7 @@ class PomodoroService : Service() {
         const val ACTION_TOGGLE = "toggle"
         const val ACTION_BREAK = "break"
         const val ACTION_SKIP = "skip"
+        const val ACTION_RELEASE = "release"
         @Volatile var running = false
 
         fun start(ctx: Context) {

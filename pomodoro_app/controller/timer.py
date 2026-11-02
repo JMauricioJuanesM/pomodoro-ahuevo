@@ -9,7 +9,7 @@ from ..core.timefmt import fmt
 from ..core.tips import activity_tip, pick_tip
 from ..services.shortcuts import disable_shortcuts, restore_shortcuts
 from ..services.system import notify, play_sound, poweroff
-from ..ui.overlays import BreakScreen, NudgeScreen
+from ..ui.overlays import BreakScreen, NudgeScreen, SkipScreen
 
 SHARED_PHASES = ("work", "short", "long")   # fases que el teléfono puede mover
 
@@ -61,22 +61,55 @@ class TimerMixin:
         self.break_focus = focus
         self.break_skippable = self.cfg["allow_skip"] or focus
 
+    # ---------- saltarse el pomodoro: con mucha fricción ----------
+    def friction_needed(self):
+        """En horario de trabajo (no en horas extra), pausar sin sensor, reiniciar o irte a descanso piden
+        justificarse en `SkipScreen`."""
+        return (self.cfg["skip_friction"] and self.phase == "work" and not self.shutdown_at
+                and not self.in_overtime() and (self.work_due() or self.on_duty()))
+
+    def guarded(self, action, fn):
+        """Hace `fn` directo, o tras la pantalla de fricción si toca. Cuenta el salto y avisa al bot."""
+        if not self.friction_needed():
+            fn()
+            return
+        st = self.focus_stats_today()
+        done = int(st.get("skips", 0))
+        what = {"pause": "pausar", "reset": "reiniciar"}.get(action, "irte a descanso")
+
+        def confirmed(reason):
+            self._stat("skips", 1)
+            self.screenwatch.report_skip(action, reason)
+            fn()
+
+        left = max(0, self.cfg["skips_per_day"] - done)
+        self.open_overlay(lambda: SkipScreen(self, what, 45 * 2 ** min(done, 4), left, confirmed))
+
     # ---------- controles ----------
     def toggle(self):
         if self.phase != "work" or self.shutdown_at or self.overlay:
             return
+        if self.running and not self.focus_on():   # con el sensor, pausar solo lo deja esperándote
+            self.guarded("pause", self._pause)
+        elif self.running:
+            self._pause()
+        else:
+            self.start_effective()
+
+    def _pause(self):
         if self.running:
             self.remaining = self.end_time - time.time()
             self.running = False
             if self.focus_on() and self.work_due():   # en horario de trabajo, pausar no es descansar
                 self.arm()
             self.render()
-        else:
-            self.start_effective()
 
     def reset(self):
-        if self.phase != "work" or self.shutdown_at:
+        if self.phase != "work" or self.shutdown_at or self.overlay:
             return
+        self.guarded("reset", self._reset)
+
+    def _reset(self):
         self.running = False
         self.phase_total = self.remaining = self.duration("work")
         self.warned = False
@@ -84,7 +117,7 @@ class TimerMixin:
 
     def break_now(self):
         if self.phase == "work" and not self.shutdown_at and not self.overlay:
-            self.start_break(count_pomodoro=False)
+            self.guarded("break", lambda: self.start_break(count_pomodoro=False))
 
     # ---------- fases ----------
     def start_phase(self, phase, run_now=True):

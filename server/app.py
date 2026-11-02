@@ -159,7 +159,8 @@ async def put_alert(request: Request):
     """Se detectó contenido: queda registrado y despierta a los demás (el bot te escribe)."""
     body = await request.json()
     alert = {"ts": time.time(), "source": body.get("source"), "level": body.get("level"),
-             "app": body.get("app"), "app_name": body.get("app_name"), "action": body.get("action")}
+             "app": body.get("app"), "app_name": body.get("app_name"), "action": body.get("action"),
+             "reason": (body.get("reason") or "")[:300]}
     state["alerts"] = (state["alerts"] + [alert])[-200:]
     await bump()
     return {"rev": state["rev"]}

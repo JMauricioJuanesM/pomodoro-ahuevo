@@ -20,7 +20,11 @@ DEFAULT_CONFIG = {
     "block_shortcuts": True,   # desactiva Super, Alt+Tab, etc. durante el descanso
     "lock_if_escape": True,    # bloquea la sesión si la ventana pierde el foco
     "allow_skip": False,       # botón para saltar cualquier descanso
-    "focus_allow_skip": True,  # en actividades "enfocado" se pueden saltar los descansos
+    "focus_allow_skip": True,
+    # saltarse el pomodoro en horario de trabajo (pausar, reiniciar, descanso ya): razón, frase y espera
+    "skip_friction": True,
+    "skips_per_day": 2,        # en la compu; en el teléfono es `phone_skips_per_day`
+    "phone_skips_per_day": 2,  # en actividades "enfocado" se pueden saltar los descansos
     "sound": True,
     # descanso largo / programado flexible
     "long_flex": True,

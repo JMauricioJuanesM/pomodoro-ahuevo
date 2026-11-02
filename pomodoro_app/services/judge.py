@@ -123,18 +123,34 @@ class Judge:
     # ---------- hilo aparte ----------
     @staticmethod
     def _bin():
-        return os.environ.get("POMODORO_JUDGE_BIN", "claude")
+        """El ejecutable de Claude Code. Al arrancar con la sesión de GNOME el PATH no incluye nvm, así que
+        también se busca donde suele instalarse."""
+        if os.environ.get("POMODORO_JUDGE_BIN"):
+            return os.environ["POMODORO_JUDGE_BIN"]
+        found = shutil.which("claude")
+        if found:
+            return found
+        home = os.path.expanduser("~")
+        nvm = os.path.join(home, ".nvm", "versions", "node")
+        candidates = [os.path.join(home, ".claude", "local", "claude"), os.path.join(home, ".local", "bin", "claude")]
+        try:
+            candidates += [os.path.join(nvm, v, "bin", "claude") for v in sorted(os.listdir(nvm), reverse=True)]
+        except OSError:
+            pass
+        return next((c for c in candidates if os.access(c, os.X_OK)), "claude")
 
     def _call(self, system, prompt):
         self.hour_calls.append(time.time())
         with self.lock:
             self.data["calls"][_today()] = self.calls_today() + 1
         os.makedirs(WORK_DIR, exist_ok=True)
-        cmd = [self._bin(), "-p", "--model", self.app.cfg["focus_llm_model"], "--tools", "",
+        exe = self._bin()
+        env = dict(os.environ, PATH=os.path.dirname(exe) + os.pathsep + os.environ.get("PATH", ""))
+        cmd = [exe, "-p", "--model", self.app.cfg["focus_llm_model"], "--tools", "",
                "--disable-slash-commands", "--no-session-persistence", "--setting-sources", "",
                "--system-prompt", system, "--output-format", "text"]
         try:
-            r = subprocess.run(cmd, input=prompt, capture_output=True, text=True, timeout=45, cwd=WORK_DIR)
+            r = subprocess.run(cmd, input=prompt, capture_output=True, text=True, timeout=45, cwd=WORK_DIR, env=env)
             out = r.stdout.strip() if r.returncode == 0 else ""
         except (OSError, subprocess.TimeoutExpired):
             out = ""

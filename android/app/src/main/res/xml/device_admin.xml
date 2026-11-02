@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Sin políticas: solo sirve para que Android no deje desinstalar la app (ver SelfDefense). -->
+<device-admin>
+    <uses-policies />
+</device-admin>
