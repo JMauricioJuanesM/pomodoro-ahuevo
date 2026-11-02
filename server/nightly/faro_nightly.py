@@ -25,6 +25,8 @@ ENV = "/opt/pomodoro-sync/.env"
 CLAUDE = os.environ.get("CLAUDE_BIN", "/root/.local/bin/claude")
 MODEL = os.environ.get("FARO_MODEL", "opus")
 LOGS = "/opt/faro/logs"
+# Permitir "messaging" quita el tope de WhatsApp: solo en actividades de chat o reuniones.
+CHAT_RE = re.compile(r"chat|💬|reuni|daily|junta|llamada|meet|📞", re.I)
 CATEGORIES = ["finance", "messaging", "maps", "work", "education", "reading", "shopping", "audio", "social", "video",
               "game", "other", "essential"]
 
@@ -127,7 +129,8 @@ Reglas:
   reescribe o quita las de puntos negativos. Nada genérico de taza de café: que se note que lo conoces.
 - Categorías válidas: {cats}. "finance", "maps" y "essential" siempre se permiten; no hace falta listarlas.
   En las políticas solo actividades de tipo trabajo/enfocado; respeta la intención y el nombre.
-  Si el usuario ya fijó apps permitidas a mano, no la incluyas.
+  Si el usuario ya fijó apps permitidas a mano, no la incluyas. "messaging" quita el tope de WhatsApp:
+  úsalo solo en actividades de chat o reuniones.
 - Clasifica TODAS las apps sin clasificar (contenido sexual o de citas = "social").
 - 1 o 2 preguntas como mucho; una de ellas pide sugerencias para mejorar Faro (concreta según los datos).
 - No propongas aflojar la vigilancia anti-pornografía ni los bloqueos; sí puedes proponer reforzarlos.
@@ -160,7 +163,11 @@ def reflect():
         hub("PUT", "/api/mind", {"mind": mind})
 
     acts = d["activities"]
-    pol = {aid: {"allow": [c for c in p.get("allow", []) if c in CATEGORIES], "why": (p.get("why") or "")[:140]}
+    def chatty(aid):
+        a = acts[aid]
+        return bool(CHAT_RE.search(f"{a.get('label', '')} {a.get('intent', '')}"))
+    pol = {aid: {"allow": [c for c in p.get("allow", []) if c in CATEGORIES and (c != "messaging" or chatty(aid))],
+                 "why": (p.get("why") or "")[:140]}
            for aid, p in (out.get("policies") or {}).items() if aid in acts and not acts[aid].get("allow")}
     if pol:
         hub("PUT", "/api/policies", {"policies": pol})

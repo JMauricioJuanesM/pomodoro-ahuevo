@@ -31,7 +31,7 @@ object Policy {
 
     private val RULES = listOf(
         Regex("banc|pago|mandad|trámite|tramite|finanz|personal|👤|compra|super|🛒") to
-            setOf(Apps.FINANCE, Apps.SHOPPING, Apps.MAPS, Apps.WORK, Apps.MESSAGING),
+            setOf(Apps.FINANCE, Apps.SHOPPING, Apps.MAPS, Apps.WORK),
         Regex("estudi|🎓|curso|clase|tarea|examen|📚") to setOf(Apps.EDUCATION, Apps.READING, Apps.WORK),
         Regex("leer|lectura|📖|libro") to setOf(Apps.READING),
         Regex("chat|💬|reuni|daily|junta|llamada|meet|📞") to setOf(Apps.MESSAGING, Apps.WORK),
