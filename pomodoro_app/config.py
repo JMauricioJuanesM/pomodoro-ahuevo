@@ -74,6 +74,21 @@ DEFAULT_CONFIG = {
     "focus_llm_per_hour": 20,
     "focus_llm_per_day": 120,
     "focus_stats": {},         # por día: segundos efectivos, de retraso, distraído y fuera
+    # Faro: lo comparten la compu y el teléfono (ver services/sync.py)
+    "mind_on_unlock": True,      # frase en pantalla completa al desbloquear el teléfono
+    "mind_unlock_every_min": 20,
+    "mind_show_sec": 7,
+    "mind_on_break": True,       # frase en la pantalla del descanso (compu)
+    "phone_break_lock": True,    # el descanso tapa también el teléfono
+    "break_allow": ["messaging"],  # tipos de app que sí se pueden usar con el teléfono tapado
+    "wa_guard": True,            # WhatsApp en el trabajo: chats con tope, estados y grupos no
+    "wa_budget_min": 5,
+    "wa_groups_ok": False,
+    "wa_groups_allowed": [],
+    "tasks_firm": True,          # pantalla completa cuando vence una tarea de TickTick
+    "tasks_allday_hour": 11,
+    "auto_update": True,         # el teléfono instala solo la versión que publica el VPS
+    "phone_app_categories": {},  # paquete → categoría, si quieres corregir a la IA
     # ventana
     "always_on_top": False,
     "widget_mode": False,

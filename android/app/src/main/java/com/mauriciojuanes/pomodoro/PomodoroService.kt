@@ -4,8 +4,10 @@ import android.app.Notification
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.ServiceInfo
 import android.os.BatteryManager
 import android.os.Build
@@ -26,6 +28,14 @@ class PomodoroService : Service() {
     private var lastKey = ""
     private var lastHeartbeat = 0L
     private var lastBank = false
+    private var lastFaro = 0L
+
+    /** Al desbloquear: telón del descanso, tarea vencida, pregunta o una frase (ver [Curtain]). */
+    private val unlock = object : BroadcastReceiver() {
+        override fun onReceive(c: Context, i: Intent) {
+            if (i.action == Intent.ACTION_USER_PRESENT) Curtain.onUnlock(c, unlocked = true)
+        }
+    }
     private val loop = object : Runnable {
         override fun run() {
             try {
@@ -46,6 +56,7 @@ class PomodoroService : Service() {
         else startForeground(ID, n)
         Sync.start()
         handler.post(loop)
+        registerReceiver(unlock, IntentFilter(Intent.ACTION_USER_PRESENT))
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -63,6 +74,7 @@ class PomodoroService : Service() {
     override fun onDestroy() {
         running = false
         handler.removeCallbacks(loop)
+        runCatching { unregisterReceiver(unlock) }
         setDnd(false)
         super.onDestroy()
     }
@@ -82,6 +94,13 @@ class PomodoroService : Service() {
             lastKey = key
             getSystemService(NotificationManager::class.java).notify(ID, build())
         }
+        if (System.currentTimeMillis() - lastFaro > 30_000) {   // cada 30 s: tareas vencidas, preguntas, versión nueva
+            lastFaro = System.currentTimeMillis()
+            if (screenOn) Curtain.onUnlock(this, unlocked = false)
+            Updater.maybeInstall(this)
+            SelfTest.maybeReport(this)
+            if (Engine.online) Hub.reportApps(this)
+        }
         val bank = Store.bankSince > 0
         if (System.currentTimeMillis() - lastHeartbeat > 45_000 || bank != lastBank) {   // modo banco: avisar ya
             lastBank = bank
@@ -95,7 +114,14 @@ class PomodoroService : Service() {
                 .put("battery", bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY))
                 .put("model", Build.MODEL)
                 .put("fg", if (screenOn) GuardService.instance?.foreground ?: "" else "")
-                .put("version", BuildConfigInfo.VERSION))
+                .put("version", Updater.installedName(this))
+                .put("version_code", Updater.installedCode(this))
+                .put("fg_cat", (GuardService.instance?.foreground ?: "").takeIf { it.isNotEmpty() && screenOn }
+                    ?.let { Apps.category(this, it) } ?: "")
+                .put("wa_used_sec", WhatsApp.usedSec())
+                .put("activity", Policy.at().let { "${it.label}${if (it.phone) "" else " (sin vigilar el teléfono)"}" })
+                .put("update", Updater.status)
+                .put("install_ok", packageManager.canRequestPackageInstalls()))
         }
     }
 
@@ -165,8 +191,4 @@ class PomodoroService : Service() {
             ctx.startForegroundService(Intent(ctx, PomodoroService::class.java))
         }
     }
-}
-
-object BuildConfigInfo {
-    const val VERSION = "2.5"
 }

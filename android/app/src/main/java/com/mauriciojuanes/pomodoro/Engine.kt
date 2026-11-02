@@ -131,8 +131,11 @@ object Engine {
         val until = java.time.Instant.ofEpochSecond((timer.endTime ?: now()).toLong())
             .atZone(java.time.ZoneId.systemDefault()).format(HHMM)
         when {
-            phase == "short" || phase == "long" ->
+            phase == "short" || phase == "long" -> {
                 Notifier.alert(ctx, "☕ ${timer.title}", "Hasta las $until. Levántate, estírate, toma agua.", vibrate = false)
+                if (Curtain.breakLocked() && ctx.getSystemService(android.os.PowerManager::class.java).isInteractive)
+                    Curtain.show(ctx, "break")
+            }
             phase == "sched" -> Notifier.alert(ctx, "🔒 ${timer.title}", "Es hora de ${timer.title} hasta las $until.")
             phase == "work" && was != "work" -> {
                 val txt = if (timer.running) "Arrancó tu siguiente pomodoro." else "Pulsa Iniciar cuando quieras."
@@ -325,6 +328,7 @@ object Engine {
             desktopSeenAt = now() - (serverNow - it.optDouble("seen", 0.0))
         }
         Blocks.onRemote(st)
+        Hub.onRemote(ctx, st)
         Store.mergeMax("stats", st.optJSONObject("stats"))
         Store.mergeMax("phone_stats", st.optJSONObject("phone_stats"))
         val rev = st.optInt("timer_rev")

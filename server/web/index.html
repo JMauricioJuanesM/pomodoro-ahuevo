@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Faro</title>
+<style>
+:root{--bg:#0f1115;--card:#181b22;--card2:#20242d;--line:#2a2f3a;--text:#e8eaf0;--muted:#8b93a5;
+  --gold:#e0a526;--red:#e5534b;--green:#46b37b;--blue:#4a8fe7}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:15px/1.45 system-ui,sans-serif;padding-bottom:72px}
+header{position:sticky;top:0;background:var(--bg);padding:14px 16px 8px;border-bottom:1px solid var(--line);z-index:2}
+header h1{margin:0;font-size:18px}
+header small{color:var(--muted)}
+main{padding:12px 16px;max-width:720px;margin:auto}
+nav{position:fixed;bottom:0;left:0;right:0;display:flex;background:var(--card);border-top:1px solid var(--line)}
+nav button{flex:1;padding:10px 0 12px;background:none;border:0;color:var(--muted);font:inherit;font-size:12px}
+nav button b{display:block;font-size:20px;font-weight:400}
+nav button.on{color:var(--text)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin:0 0 12px}
+.row{display:flex;gap:8px;flex-wrap:wrap}
+.btn{border:0;border-radius:10px;padding:10px 14px;font:inherit;font-weight:600;background:var(--card2);color:var(--text)}
+.btn.red{background:var(--red);color:#fff}.btn.green{background:var(--green);color:#06140c}
+.btn.gold{background:var(--gold);color:#111}.btn.blue{background:var(--blue);color:#fff}
+.muted{color:var(--muted)}
+textarea,input,select{width:100%;padding:10px;border-radius:10px;border:1px solid var(--line);background:var(--card2);color:inherit;font:inherit}
+.item{padding:10px 0;border-bottom:1px solid var(--line)}
+.item:last-child{border:0}
+.tag{display:inline-block;font-size:12px;padding:1px 8px;border-radius:99px;background:var(--card2);color:var(--muted)}
+.unread{border-left:3px solid var(--gold);padding-left:10px}
+.heat{display:grid;grid-template-columns:repeat(14,1fr);gap:4px;margin-top:8px}
+.heat i{aspect-ratio:1;border-radius:4px;background:var(--card2)}
+.big{font-size:34px;font-weight:700}
+pre{white-space:pre-wrap;font:inherit;margin:8px 0 0}
+.overdue{color:var(--red)}
+</style>
+</head>
+<body>
+<header><h1>🗼 Faro</h1><small id="sub">cargando…</small></header>
+<main id="view"></main>
+<nav id="nav"></nav>
+<script>
+const TABS = [["hoy","🏠","Hoy"],["diario","📓","Diario"],["tareas","✅","Tareas"],["buzon","📬","Buzón"],["mente","🧠","Mente"]]
+const TYPES = {recaida:["🔴","Recaída","red"],urgencia:["🆘","Urgencia","gold"],victoria:["💪","Vencí","green"],
+  nota:["📝","Nota",""],sugerencia:["💡","Sugerencia","blue"],animo:["🙂","Ánimo",""],reaccion:["👍","Reacción",""]}
+const $ = (h) => { const d = document.createElement("div"); d.innerHTML = h; return d }
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]))
+const api = async (method, path, body) => {
+  const r = await fetch(path, {method, headers: {"Content-Type": "application/json"}, body: body ? JSON.stringify(body) : undefined})
+  if (r.status === 401) location.reload()
+  if (!r.ok) throw new Error("HTTP " + r.status)
+  return r.json()
+}
+const when = (ts) => new Date(ts * 1000).toLocaleString("es-MX", {weekday:"short", day:"numeric", month:"short", hour:"2-digit", minute:"2-digit"})
+const day = (ts) => new Date(ts * 1000).toLocaleDateString("en-CA")
+let tab = (location.hash.slice(1).split("/")[0]) || "hoy"
+
+function navRender() {
+  const nav = document.getElementById("nav")
+  nav.innerHTML = TABS.map(([k, i, l]) => `<button class="${k === tab ? "on" : ""}" data-k="${k}"><b>${i}</b>${l}</button>`).join("")
+  nav.querySelectorAll("button").forEach((b) => b.onclick = () => { location.hash = b.dataset.k })
+}
+window.onhashchange = () => { tab = location.hash.slice(1).split("/")[0] || "hoy"; render() }
+
+function streak(items) {
+  const last = [...items].reverse().find((e) => e.type === "recaida")
+  const since = last ? last.ts : (items[0]?.ts ?? Date.now() / 1000)
+  return Math.floor((Date.now() / 1000 - since) / 86400)
+}
+
+function heat(items) {
+  const byDay = {}
+  for (const e of items) {
+    const d = day(e.ts)
+    byDay[d] = byDay[d] || {r: 0, u: 0, v: 0}
+    if (e.type === "recaida") byDay[d].r++
+    if (e.type === "urgencia") byDay[d].u++
+    if (e.type === "victoria") byDay[d].v++
+  }
+  let cells = ""
+  for (let i = 27; i >= 0; i--) {
+    const d = day(Date.now() / 1000 - i * 86400), x = byDay[d]
+    const c = !x ? "" : x.r ? "var(--red)" : x.u && !x.v ? "var(--gold)" : "var(--green)"
+    cells += `<i title="${d}" style="${c ? "background:" + c : ""}"></i>`
+  }
+  return `<div class="heat">${cells}</div><small class="muted">28 días · 🟥 recaída · 🟨 urgencia · 🟩 victoria</small>`
+}
+
+async function logEntry(type) {
+  const text = prompt(type === "recaida" ? "¿Qué pasó? ¿Qué la disparó? (sin juzgarte)" :
+    type === "urgencia" ? "¿Qué sientes y qué la disparó?" : type === "victoria" ? "¿Qué te ayudó a vencerla?" : "Escribe:")
+  if (text === null) return
+  await api("POST", "/api/journal", {type, text, source: "web"})
+  if (type === "urgencia") alert("Respira 4-4-4-4. La ola baja en 10 min. Levántate, sal del cuarto, toma agua. Cuando pase, registra si venciste.")
+  render()
+}
+
+async function viewHoy(v) {
+  const [st, j, t] = await Promise.all([api("GET", "/api/state?source=web"), api("GET", "/api/journal?limit=300"), api("GET", "/api/tasks")])
+  const tm = st.timer || {}
+  const rem = tm.running ? Math.max(0, tm.end_time - st.server_time) : (tm.remaining ?? 0)
+  const due = t.items.filter((x) => x.due && new Date(x.due) < new Date(Date.now() + 86400000)).slice(0, 5)
+  const asks = (st.asks || []).filter((a) => !a.answer)
+  v.innerHTML = `
+    <div class="card"><div class="muted">${esc(tm.title || "—")} ${tm.running ? "" : "· en pausa"}</div>
+      <div class="big">${Math.floor(rem / 60)}:${String(Math.floor(rem % 60)).padStart(2, "0")}</div>
+      ${st.current_task ? `<div>🎯 ${esc(st.current_task.title)}</div>` : ""}</div>
+    <div class="card"><div class="row" style="justify-content:space-between;align-items:baseline">
+      <div><div class="big">${streak(j.items)} días</div><span class="muted">sin recaer</span></div>
+      <div class="row"><button class="btn gold" onclick="logEntry('urgencia')">🆘 Urgencia</button>
+      <button class="btn green" onclick="logEntry('victoria')">💪 Vencí</button></div></div>${heat(j.items)}</div>
+    ${asks.map((a) => `<div class="card"><b>❓ ${esc(a.question)}</b><textarea id="ask-${a.id}" rows="3"></textarea>
+      <div class="row" style="margin-top:8px"><button class="btn blue" onclick="answer('${a.id}')">Enviar</button></div></div>`).join("")}
+    <div class="card"><b>Para hoy</b>${due.length ? due.map(taskRow).join("") : '<div class="muted">Nada con fecha para hoy.</div>'}</div>
+    ${st.inbox_unread ? `<div class="card"><a href="#buzon" style="color:var(--gold)">📬 ${st.inbox_unread} mensaje(s) sin leer</a></div>` : ""}`
+}
+
+async function answer(id) {
+  const text = document.getElementById("ask-" + id).value.trim()
+  if (!text) return
+  await api("POST", `/api/asks/${id}/answer`, {text, source: "web"})
+  render()
+}
+
+async function viewDiario(v) {
+  const j = await api("GET", "/api/journal?limit=500")
+  const items = j.items.filter((e) => e.type !== "reaccion")
+  v.innerHTML = `<div class="card"><div class="row">
+      ${["recaida", "urgencia", "victoria", "nota", "sugerencia"].map((k) =>
+        `<button class="btn ${TYPES[k][2]}" onclick="logEntry('${k}')">${TYPES[k][0]} ${TYPES[k][1]}</button>`).join("")}</div>
+      ${heat(j.items)}</div>
+    <div class="card">${items.slice().reverse().slice(0, 150).map((e) => `<div class="item">
+      <span class="tag">${TYPES[e.type]?.[0] || ""} ${TYPES[e.type]?.[1] || e.type}${e.auto ? " · auto" : ""}</span>
+      <span class="muted"> ${when(e.ts)} · ${esc(e.source)}</span>
+      ${e.text ? `<pre>${esc(e.text)}</pre>` : ""}</div>`).join("") || '<div class="muted">Aún no hay nada.</div>'}</div>`
+}
+
+function taskRow(x) {
+  const late = x.due && new Date(x.due) < new Date()
+  return `<div class="item"><div>${esc(x.title)}</div>
+    <div class="muted ${late ? "overdue" : ""}">${esc(x.project)}${x.due ? " · " + new Date(x.due).toLocaleString("es-MX", {day: "numeric", month: "short", hour: "2-digit", minute: "2-digit"}) : ""}</div>
+    <div class="row" style="margin-top:6px"><button class="btn green" onclick="done('${x.id}')">✅ Hecha</button>
+    <button class="btn" onclick="focusTask('${x.id}', ${JSON.stringify(esc(x.title))})">🎯 Trabajar en esta</button></div></div>`
+}
+
+async function done(id) { await api("POST", `/api/tasks/${id}/complete`, {source: "web"}); render() }
+async function focusTask(id, title) { await api("PUT", "/api/tasks/current", {task: {id, title}}); location.hash = "hoy" }
+
+async function viewTareas(v) {
+  const t = await api("GET", "/api/tasks")
+  const items = [...t.items].sort((a, b) => (a.due || "9") < (b.due || "9") ? -1 : 1)
+  v.innerHTML = `<div class="card"><div class="row"><input id="newt" placeholder="Nueva tarea…" style="flex:1">
+    <button class="btn gold" onclick="newTask()">Agregar</button></div>
+    <small class="muted">TickTick · actualizado ${t.updated ? when(t.updated) : "nunca"}${t.error ? " · ⚠️ " + esc(t.error) : ""}</small></div>
+    <div class="card">${items.map(taskRow).join("") || '<div class="muted">Sin tareas.</div>'}</div>`
+}
+
+async function newTask() {
+  const title = document.getElementById("newt").value.trim()
+  if (title) { await api("POST", "/api/tasks", {title}); render() }
+}
+
+async function viewBuzon(v) {
+  const b = await api("GET", "/api/inbox")
+  const open = location.hash.split("/")[1]
+  v.innerHTML = `<div class="card"><div class="row" style="justify-content:space-between"><b>Buzón</b>
+    <button class="btn" onclick="readAll()">Marcar todo leído</button></div>
+    ${b.items.map((m) => `<div class="item ${m.read ? "" : "unread"}" id="m-${m.id}">
+      <div onclick="toggleMsg('${m.id}')"><b>${esc(m.title || m.short)}</b> <span class="muted">· ${when(m.ts)}</span></div>
+      <pre style="display:${m.id === open ? "block" : "none"}">${esc(m.body || m.short)}</pre></div>`).join("") || '<div class="muted">Vacío.</div>'}</div>`
+  if (open) { document.getElementById("m-" + open)?.scrollIntoView(); api("POST", `/api/inbox/${open}/read`) }
+}
+
+function toggleMsg(id) {
+  const p = document.querySelector(`#m-${id} pre`)
+  p.style.display = p.style.display === "none" ? "block" : "none"
+  document.getElementById("m-" + id).classList.remove("unread")
+  api("POST", `/api/inbox/${id}/read`)
+}
+async function readAll() { await api("POST", "/api/inbox/all/read"); render() }
+
+async function viewMente(v) {
+  const {mind} = await api("GET", "/api/mind")
+  const msgs = mind.messages || []
+  v.innerHTML = `${(mind.beliefs || []).length ? `<div class="card"><b>Creencias que estamos cambiando</b>${mind.beliefs.map((b) =>
+      `<div class="item"><div class="muted"><s>${esc(b.negative)}</s></div><div>→ ${esc(b.positive)}</div></div>`).join("")}</div>` : ""}
+    <div class="card"><b>Frases</b> <small class="muted">${mind.updated ? "actualizadas " + when(mind.updated) : ""}</small>
+    ${msgs.map((m) => `<div class="item"><div>${esc(m.text)}</div><div class="row" style="margin-top:6px">
+      <span class="tag">${(m.when || []).join(" · ")}</span><span class="tag">${m.score || 0}</span>
+      <button class="btn" onclick="react('${m.id}',1)">👍</button><button class="btn" onclick="react('${m.id}',-1)">👎</button></div></div>`).join("")
+      || '<div class="muted">El ciclo nocturno las escribe a partir de tu diario.</div>'}</div>`
+}
+async function react(id, value) { await api("POST", "/api/mind/react", {id, value, source: "web"}); render() }
+
+async function render() {
+  navRender()
+  const v = document.getElementById("view")
+  try {
+    await ({hoy: viewHoy, diario: viewDiario, tareas: viewTareas, buzon: viewBuzon, mente: viewMente}[tab] || viewHoy)(v)
+    document.getElementById("sub").textContent = "actualizado " + new Date().toLocaleTimeString("es-MX", {hour: "2-digit", minute: "2-digit"})
+  } catch (e) {
+    document.getElementById("sub").textContent = "⚠️ " + e.message
+  }
+}
+render()
+</script>
+</body>
+</html>

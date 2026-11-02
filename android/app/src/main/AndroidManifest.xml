@@ -19,6 +19,10 @@
 
     <!-- Desinstalar la app con contenido sexual tras una advertencia (Strikes): Android pide confirmar. -->
     <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES" />
+    <!-- Actualizarse sola desde el hub (Updater); la compu da «instalar apps desconocidas» por ADB. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- Android 12+: actualizarse sin preguntar cuando la app ya es su propia instaladora. -->
+    <uses-permission android:name="android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION" />
     <!-- Ver el nombre de cualquier app (también las instaladas aparte) para compararlo con AdultDb. -->
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"
         tools:ignore="QueryAllPackagesPermission" />
@@ -38,7 +42,7 @@
 
     <application
         android:name=".App"
-        android:label="Pomodoro"
+        android:label="Faro"
         android:icon="@drawable/ic_launcher"
         android:roundIcon="@drawable/ic_launcher"
         android:theme="@android:style/Theme.Material.NoActionBar">
@@ -52,7 +56,26 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!-- Los enlaces del bot (https://pomodoro.mauriciojuanes.com/app#buzon/…) abren la app. -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="pomodoro.mauriciojuanes.com" android:path="/app" />
+            </intent-filter>
         </activity>
+
+        <!-- El telón: descanso, frases, preguntas, tareas y SOS en pantalla completa (Curtain.kt). -->
+        <activity
+            android:name=".CurtainActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:launchMode="singleTask"
+            android:taskAffinity=".curtain"
+            android:windowSoftInputMode="adjustResize"
+            android:theme="@android:style/Theme.Material.NoActionBar" />
+
+        <receiver android:name=".InstallReceiver" android:exported="false" />
 
         <!-- Exportado solo para que la compu lo arranque por ADB: DUMP lo tiene el shell, no las apps. -->
         <service

@@ -59,3 +59,13 @@ def next_change(cfg, when):
             return nxt, end
         end += dt.timedelta(hours=1)
     return None, None
+
+
+def lock_of(a):
+    """Dónde aplica la actividad: "both" | "pc" | "phone" | "none" (por defecto, en los dos)."""
+    return (a or {}).get("lock") or "both"
+
+
+def pc_enforced(cfg, when):
+    """¿La actividad que toca bloquea la compu (descansos, sensor de presencia)?"""
+    return lock_of(activity(cfg, cell_activity(cfg, when))) in ("both", "pc")

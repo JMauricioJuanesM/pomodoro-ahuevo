@@ -118,11 +118,12 @@ class Overlay:
 
 
 class BreakScreen(Overlay):
-    def __init__(self, app, title, color, remaining, tip, context, overtime):
+    def __init__(self, app, title, color, remaining, tip, context, overtime, phrase=None, ask=None):
         super().__init__(app)
         self.title = title.upper() + (" · HORAS EXTRA" if overtime else "")
         self.color = "#cccccc" if color.lower() in ("#000000", "#111111") else color
         self.remaining, self.tip, self.context, self.overtime = remaining, tip, context, overtime
+        self.phrase, self.ask = phrase, ask
         self.time_labels = []
         self.build()
 
@@ -133,9 +134,27 @@ class BreakScreen(Overlay):
         if not main:
             return
         self.label(box, "Aléjate de la computadora.", 20, "#ccc")
-        self.label(box, self.tip, 17, "#9ad", pady=(14, 0))
+        if self.phrase:   # frase del mazo de Faro (ver core/mind.py)
+            self.label(box, self.phrase.get("text", ""), 22, "#f0d589", True, pady=(18, 0))
+            if self.phrase.get("sub"):
+                self.label(box, self.phrase["sub"], 14, "#bbb")
+            row = tk.Frame(box, bg=self.BG)
+            row.pack(pady=(4, 0))
+            for icon, val in (("👍", 1), ("👎", -1)):
+                b = self.button(row, icon, None)
+                b.config(command=lambda v=val, b=b: (app.mind_react(self.phrase.get("id"), v), b.config(state="disabled")))
+                b.pack(side="left", padx=4)
+        else:
+            self.label(box, self.tip, 17, "#9ad", pady=(14, 0))
         if self.context:
             self.label(box, self.context, 12, "#777", pady=(8, 0))
+        if self.ask:   # el descanso es buen momento para contestar lo que pregunta Faro
+            self.label(box, "💡 " + self.ask["question"], 15, "#9ad", pady=(24, 4))
+            self.ask_entry = tk.Text(box, width=60, height=3, font=("Sans", 12), bg="#222", fg="white",
+                                     insertbackground="white", relief="flat", wrap="word")
+            self.ask_entry.pack()
+            self.ask_btn = self.button(box, "Enviar", self.send_ask, bg="#1f618d", fg="white")
+            self.ask_btn.pack(pady=6)
 
         self.flex_frame = tk.Frame(box, bg=self.BG)
         self.flex_frame.pack(pady=(30, 0))
@@ -152,6 +171,13 @@ class BreakScreen(Overlay):
         if app.break_skippable:
             text = "Saltar descanso (estoy en algo importante)" if app.break_focus else "Saltar descanso"
             self.button(box, text, app.skip_break).pack(pady=30)
+
+    def send_ask(self):
+        text = self.ask_entry.get("1.0", "end").strip()
+        if text:
+            self.app.answer_ask(self.ask, text)
+            self.ask_entry.config(state="disabled")
+            self.ask_btn.config(text="¡Gracias!", state="disabled")
 
     def update(self, remaining):
         self.remaining = remaining
@@ -380,3 +406,75 @@ class SkipScreen(Overlay):
         else:
             self.app.close_overlay()
             self.on_confirm(reason)
+
+
+class AskScreen(Overlay):
+    """Faro pregunta algo (p. ej. qué mejorarías); se puede dejar para luego."""
+
+    def __init__(self, app, ask):
+        super().__init__(app)
+        self.ask = ask
+        self.build()
+
+    def fill(self, box, main):
+        self.label(box, "💡 FARO QUIERE MEJORAR CONTIGO", 18, "#9ad", True)
+        self.label(box, self.ask["question"], 30, bold=True, pady=20)
+        if not main:
+            return
+        for opt in self.ask.get("options") or []:
+            self.button(box, opt, lambda o=opt: self.send(o)).pack(pady=3)
+        self.entry = tk.Text(box, width=70, height=5, font=("Sans", 13), bg="#222", fg="white",
+                             insertbackground="white", relief="flat", wrap="word")
+        self.entry.pack(pady=10)
+        self.entry.focus_set()
+        row = tk.Frame(box, bg=self.BG)
+        row.pack(pady=10)
+        self.button(row, "Enviar", lambda: self.send(self.entry.get("1.0", "end").strip()),
+                    bg="#1f618d", fg="white").pack(side="left", padx=6)
+        self.button(row, "Ahora no", lambda: self.app.ask_postpone(self.ask)).pack(side="left", padx=6)
+
+    def send(self, text):
+        if text:
+            self.app.answer_ask(self.ask, text)
+            self.app.close_faro_overlay()
+
+
+class TaskScreen(Overlay):
+    """Venció una tarea de TickTick: hay que decidir (hecha, ahora o posponer; a la tercera, con razón)."""
+
+    BG = "#1d120c"
+
+    def __init__(self, app, task, snoozes):
+        super().__init__(app)
+        self.task, self.snoozes = task, snoozes
+        self.build()
+
+    def fill(self, box, main):
+        t = self.task
+        self.label(box, f"⏰ {t.get('project', '')}", 18, "#f5b041", True)
+        self.label(box, t["title"], 44, bold=True, pady=20)
+        if not main:
+            return
+        if self.snoozes:
+            self.label(box, f"Ya la pospusiste {self.snoozes} {'vez' if self.snoozes == 1 else 'veces'}.", 14, "#e59866")
+        row = tk.Frame(box, bg=self.BG)
+        row.pack(pady=20)
+        self.button(row, "✅ Ya la hice", lambda: self.app.task_done(t), bg="#1e8449", fg="white").pack(side="left", padx=6)
+        self.button(row, "🎯 La hago ahora", lambda: self.app.task_focus(t), bg="#1f618d", fg="white").pack(side="left", padx=6)
+        self.reason = None
+        if self.snoozes >= 2:
+            self.label(box, "¿Por qué la vuelves a posponer?", 13, "#aaa", pady=(10, 2))
+            self.reason = tk.Entry(box, width=60, font=("Sans", 12), bg="#222", fg="white", insertbackground="white",
+                                   relief="flat")
+            self.reason.pack()
+        row2 = tk.Frame(box, bg=self.BG)
+        row2.pack(pady=12)
+        for mins, lbl in ((15, "15 min"), (60, "1 h"), (180, "3 h")):
+            self.button(row2, f"⏰ {lbl}", lambda m=mins: self.snooze(m)).pack(side="left", padx=4)
+
+    def snooze(self, mins):
+        reason = self.reason.get().strip() if self.reason else ""
+        if self.reason and len(reason) < 15:
+            self.reason.config(bg="#5a1d1d")
+            return
+        self.app.task_snooze(self.task, mins, reason)

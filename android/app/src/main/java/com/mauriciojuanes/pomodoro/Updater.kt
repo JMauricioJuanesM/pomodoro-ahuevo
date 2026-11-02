@@ -1,0 +1,163 @@
+package com.mauriciojuanes.pomodoro
+
+import android.accessibilityservice.AccessibilityService
+import android.app.PendingIntent
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageInstaller
+import android.os.Build
+import android.os.Handler
+import android.os.Looper
+import android.os.PowerManager
+import android.view.accessibility.AccessibilityNodeInfo
+import org.json.JSONObject
+import java.io.File
+import java.security.MessageDigest
+import java.util.concurrent.Executors
+
+/**
+ * La app se actualiza sola: el VPS compila, prueba y publica (`release` en el hub, el APK en `/api/apk`), y en
+ * cuanto el teléfono se entera lo descarga, revisa su huella y lo instala. No hace falta la compu.
+ *
+ * Android pide confirmar las instalaciones de apps que no vienen de la tienda; la accesibilidad pulsa
+ * «Actualizar» como en [Strikes]. Para no cortarte nada, espera a que no estés en un pomodoro y tengas la
+ * pantalla prendida. Tras instalarse, [SelfTest] corre las pruebas y las reporta: si fallan, el ciclo
+ * nocturno se entera y publica la versión anterior con un número mayor.
+ *
+ * Necesita «instalar apps desconocidas» para esta app; la compu lo da por ADB
+ * (`appops set com.mauriciojuanes.pomodoro REQUEST_INSTALL_PACKAGES allow`).
+ */
+object Updater {
+    private val io = Executors.newSingleThreadExecutor()
+    private val handler = Handler(Looper.getMainLooper())
+    private val INSTALLERS = setOf("com.android.packageinstaller", "com.google.android.packageinstaller",
+        "com.miui.packageinstaller", "com.miui.securitycenter")
+    private val CONFIRM = setOf("actualizar", "instalar", "update", "install", "continuar", "continue", "siguiente",
+        "next", "aceptar", "ok", "listo", "done")
+    private const val CONFIRM_MS = 90_000L
+    @Volatile private var busy = false
+    @Volatile private var confirmUntil = 0L
+    private var pending: JSONObject? = null
+    var status = ""
+        private set
+
+    fun installedCode(ctx: Context): Long =
+        ctx.packageManager.getPackageInfo(ctx.packageName, 0).longVersionCode
+
+    fun installedName(ctx: Context): String =
+        ctx.packageManager.getPackageInfo(ctx.packageName, 0).versionName ?: "?"
+
+    /** Llegó la versión publicada (desde [Hub.onRemote]). */
+    fun onRelease(ctx: Context, rel: JSONObject) {
+        val code = rel.optLong("version_code")
+        if (code <= installedCode(ctx) || !Engine.cfg.optBoolean("auto_update", true)) {
+            pending = null
+            return
+        }
+        if (Store.long("update_fail_$code") >= 3) return
+        pending = rel
+        status = "Hay versión nueva: ${rel.optString("version_name")}"
+        maybeInstall(ctx)
+    }
+
+    /** Cada tanto (desde [PomodoroService]): si hay pendiente y es buen momento, instala. */
+    fun maybeInstall(ctx: Context) {
+        val rel = pending ?: return
+        if (busy || Engine.working() || Curtain.visible != null) return
+        if (!ctx.getSystemService(PowerManager::class.java).isInteractive) return
+        if (!ctx.packageManager.canRequestPackageInstalls()) {
+            status = "Falta el permiso para instalar (la compu lo da por ADB)"
+            return
+        }
+        busy = true
+        io.execute {
+            try {
+                val apk = File(ctx.cacheDir, "Faro.apk")
+                Sync.download("/api/apk", apk)
+                val sha = MessageDigest.getInstance("SHA-256").digest(apk.readBytes()).joinToString("") { "%02x".format(it) }
+                val want = rel.optString("sha256")
+                if (want.isNotEmpty() && !sha.equals(want, true)) throw IllegalStateException("la huella no coincide")
+                handler.post { install(ctx, apk, rel.optLong("version_code")) }
+            } catch (e: Exception) {
+                fail(ctx, rel.optLong("version_code"), e.message ?: e.javaClass.simpleName)
+            }
+        }
+    }
+
+    private fun install(ctx: Context, apk: File, code: Long) {
+        try {
+            val pi = ctx.packageManager.packageInstaller
+            val params = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL)
+            if (Build.VERSION.SDK_INT >= 31) params.setRequireUserAction(PackageInstaller.SessionParams.USER_ACTION_NOT_REQUIRED)
+            val id = pi.createSession(params)
+            pi.openSession(id).use { s ->
+                s.openWrite("Faro.apk", 0, apk.length()).use { out -> apk.inputStream().use { it.copyTo(out) } ; }
+                val intent = Intent(ctx, InstallReceiver::class.java).putExtra("code", code)
+                val sender = PendingIntent.getBroadcast(ctx, id, intent,
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE).intentSender
+                status = "Instalando…"
+                Store.setLong("update_started", System.currentTimeMillis())
+                s.commit(sender)
+            }
+        } catch (e: Exception) {
+            fail(ctx, code, e.message ?: e.javaClass.simpleName)
+        }
+    }
+
+    fun fail(ctx: Context, code: Long, why: String) {
+        busy = false
+        status = "No se pudo actualizar: $why"
+        Store.setLong("update_fail_$code", Store.long("update_fail_$code") + 1)
+        Sync.alert("update_failed", ctx.packageName, "Faro $code", "update", why.take(200))
+    }
+
+    /** Android pidió confirmar: abre su diálogo y que la accesibilidad lo acepte. */
+    fun needsUser(ctx: Context, confirm: Intent) {
+        confirmUntil = System.currentTimeMillis() + CONFIRM_MS
+        runCatching { ctx.startActivity(confirm.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+    }
+
+    /** Se abrió una ventana (desde [GuardService]): si es el instalador que pedimos, pulsa «Actualizar». */
+    fun onWindow(s: AccessibilityService, pkg: String) {
+        if (System.currentTimeMillis() > confirmUntil || pkg !in INSTALLERS) return
+        for (i in 0..5) handler.postDelayed({ confirm(s) }, 400L + i * 500L)
+    }
+
+    private fun confirm(s: AccessibilityService) {
+        if (System.currentTimeMillis() > confirmUntil) return
+        val root = s.rootInActiveWindow ?: return
+        val nodes = root.findAccessibilityNodeInfosByViewId("android:id/button1") +
+            CONFIRM.flatMap { root.findAccessibilityNodeInfosByText(it) }
+        val btn = nodes.firstOrNull { n ->
+            val t = n.text?.toString()?.trim()?.lowercase() ?: ""
+            n.isEnabled && (n.viewIdResourceName == "android:id/button1" || t in CONFIRM)
+        } ?: return
+        var target: AccessibilityNodeInfo? = btn
+        while (target != null && !target.isClickable) target = target.parent
+        target?.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+    }
+
+    fun confirming() = System.currentTimeMillis() < confirmUntil
+
+    fun done() {
+        busy = false
+        confirmUntil = 0
+    }
+}
+
+/** Resultado de la instalación (lo manda el instalador de Android). */
+class InstallReceiver : BroadcastReceiver() {
+    override fun onReceive(ctx: Context, intent: Intent) {
+        val code = intent.getLongExtra("code", 0)
+        when (val st = intent.getIntExtra(PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_FAILURE)) {
+            PackageInstaller.STATUS_PENDING_USER_ACTION -> {
+                @Suppress("DEPRECATION")
+                val confirm = intent.getParcelableExtra<Intent>(Intent.EXTRA_INTENT)
+                if (confirm != null) Updater.needsUser(ctx, confirm) else Updater.fail(ctx, code, "sin diálogo")
+            }
+            PackageInstaller.STATUS_SUCCESS -> Updater.done()   // normalmente ya nos reiniciaron
+            else -> Updater.fail(ctx, code, "estado $st: ${intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE) ?: ""}")
+        }
+    }
+}

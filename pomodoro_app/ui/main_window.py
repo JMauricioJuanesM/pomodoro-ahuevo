@@ -151,7 +151,7 @@ class MainWindowMixin:
         self.withdraw()
         if not self.hidden_notice:
             self.hidden_notice = True
-            notify("El Pomodoro sigue corriendo", "Lo encuentras en la barra superior, junto al reloj.")
+            notify("Faro sigue corriendo", "Lo encuentras en la barra superior, junto al reloj.")
 
     def on_close(self):
         """La X de la ventana: si hay icono en la barra, solo se oculta ahí."""
@@ -161,7 +161,7 @@ class MainWindowMixin:
                 self.widget.show()
             if not self.hidden_notice:
                 self.hidden_notice = True
-                notify("El Pomodoro sigue corriendo",
+                notify("Faro sigue corriendo",
                        "Lo encuentras en la barra superior. Para salir: menú del icono → Salir.")
             return
         self.quit_app()
@@ -240,6 +240,9 @@ class MainWindowMixin:
                 v["status"] = "Tu jornada ya terminó: pomodoros cortos y descansos dobles."
             elif self.focus_now():
                 v["status"] = "🎯 Enfocado: si estás en algo importante, puedes saltar el descanso."
+            task = self.sync.current_task()
+            if task and self.running and not ot:   # la tarea de TickTick en la que dijiste que trabajas
+                v["status"] = f"🎯 {task.get('title', '')}"
             return v
         v.update(accent=self.phase_color, title=self.phase_title.upper()[:22],
                  short={"short": "descanso", "long": "descanso", "sched": "descanso",

@@ -11,8 +11,9 @@ android {
         applicationId = "com.mauriciojuanes.pomodoro"
         minSdk = 28
         targetSdk = 34
-        versionCode = 9
-        versionName = "2.6.1"
+        // El VPS numera cada compilación (ver server/nightly/build.sh); a mano queda la última conocida.
+        versionCode = (System.getenv("FARO_VERSION_CODE") ?: "10").toInt()
+        versionName = "3.0." + versionCode
     }
 
     buildTypes {

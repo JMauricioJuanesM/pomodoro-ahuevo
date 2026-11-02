@@ -4,7 +4,7 @@ import time
 
 from ..config import save_config
 from ..constants import COLORS, FLEX_PHASES, NAMES
-from ..core.schedule import act_kind, act_label, activity, cell_activity, is_work, next_change
+from ..core.schedule import act_kind, act_label, activity, cell_activity, is_work, next_change, pc_enforced
 from ..core.timefmt import fmt
 from ..core.tips import activity_tip, pick_tip
 from ..services.shortcuts import disable_shortcuts, restore_shortcuts
@@ -188,8 +188,13 @@ class TimerMixin:
             self.show_break_screen()
 
     def show_break_screen(self):
+        # Actividades que solo vigilan el teléfono (`lock`: "phone"/"none"): la compu no se tapa.
+        if not pc_enforced(self.cfg, dt.datetime.now()):
+            return
         self.open_overlay(lambda: BreakScreen(self, self.phase_title, self.phase_color, self.remaining,
-                                              self.current_tip, self.break_context, self.overtime))
+                                              self.current_tip, self.break_context, self.overtime,
+                                              self.mind_pick("break") if self.cfg.get("mind_on_break", True) else None,
+                                              (self.sync.asks() or [None])[0]))
 
     def leave_break(self):
         """Descanso flexible: libera la pantalla hasta el bloqueo final."""
@@ -319,6 +324,7 @@ class TimerMixin:
             self.last_second = int(now)
             self.check_day()
             self.focus_tick()
+            self.faro_tick()
             self.check_reminders()
             self.process_reminders()
             if self.active_reminder and now > self.active_reminder[1]:

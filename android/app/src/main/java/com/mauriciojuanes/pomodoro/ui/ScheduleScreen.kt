@@ -52,7 +52,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.mauriciojuanes.pomodoro.Apps
 import com.mauriciojuanes.pomodoro.Engine
+import com.mauriciojuanes.pomodoro.Policy
+import com.mauriciojuanes.pomodoro.Sched
 import org.json.JSONObject
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -62,6 +65,8 @@ val DAY_LETTERS = listOf("L", "M", "X", "J", "V", "S", "D")
 val PRESET_COLORS = listOf("#00ffff", "#46bdc6", "#4a86e8", "#0000ff", "#9900ff", "#ff00ff", "#990000", "#e06666",
     "#ff9900", "#ffff00", "#00ff00", "#3c9e5c", "#b7b7b7", "#ffffff")
 val EMOJIS = "💻 📚 🎓 ⚙️ 👤 💬 🍽 🍳 ☕ 🏃 🚶 🧘 🎮 📖 🚿 🛏 ❤️ 🎵 🛒 🧹 🚗 📞".split(" ")
+
+val LOCKS = listOf("both" to "💻📱 Ambos", "pc" to "💻 Compu", "phone" to "📱 Teléfono", "none" to "Ninguno")
 
 private fun hourLabel(h: Int) = "%02d:00".format(h % 24)
 
@@ -277,6 +282,10 @@ private fun ActivityDialog(id: String?, onDismiss: () -> Unit) {
     var label by remember { mutableStateOf(a?.optString("label") ?: "") }
     var color by remember { mutableStateOf(a?.optString("color") ?: "#00ffff") }
     var kind by remember { mutableStateOf(a?.optString("kind") ?: "trabajo") }
+    var lock by remember { mutableStateOf(Policy.lockOf(a)) }
+    var intent by remember { mutableStateOf(a?.optString("intent") ?: "") }
+    // null = que lo decida Faro (IA de la noche o el nombre); si no, lo que escojas.
+    var allow by remember { mutableStateOf(a?.optJSONArray("allow")?.let { arr -> (0 until arr.length()).map { arr.optString(it) }.toSet() }) }
     var confirmDelete by remember { mutableStateOf(false) }
 
     AlertDialog(
@@ -315,6 +324,40 @@ private fun ActivityDialog(id: String?, onDismiss: () -> Unit) {
                         Text("${KIND_ICONS[k]}  $desc", color = TextMain, fontSize = 14.sp)
                     }
                 }
+                if (Sched.isWork(kind) || kind == "descanso") {
+                    VSpace(14)
+                    Text("¿Dónde aplica?", color = Muted, fontSize = 13.sp)
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        LOCKS.forEach { (k, l) ->
+                            Text(l, fontSize = 14.sp, color = if (lock == k) onColor(Tomato) else TextMain,
+                                modifier = Modifier.padding(top = 6.dp).clip(RoundedCornerShape(10.dp))
+                                    .background(if (lock == k) Tomato else Card2).clickable { lock = k }
+                                    .padding(horizontal = 10.dp, vertical = 6.dp))
+                        }
+                    }
+                }
+                if (Sched.isWork(kind)) {
+                    VSpace(14)
+                    OutlinedTextField(intent, { intent = it }, label = { Text("¿Qué haces aquí? (para la IA)") },
+                        placeholder = { Text("p. ej. pagos y trámites del banco") }, modifier = Modifier.fillMaxWidth())
+                    VSpace(10)
+                    val auto = allow == null
+                    val shown = allow ?: Policy.allowFor(id, JSONObject().put("label", label).put("intent", intent)).first
+                    Text(if (auto) "Apps permitidas en el teléfono (las decide Faro; toca para escoger tú)"
+                        else "Apps permitidas en el teléfono", color = Muted, fontSize = 13.sp)
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Apps.LABELS.forEach { (cat, l) ->
+                            val on = cat in shown
+                            Text(l, fontSize = 13.sp, color = if (on) onColor(Ok) else Muted,
+                                modifier = Modifier.padding(top = 6.dp).clip(RoundedCornerShape(10.dp))
+                                    .background(if (on) Ok.copy(alpha = if (auto) 0.55f else 1f) else Card2)
+                                    .clickable { allow = if (on) shown - cat else shown + cat }
+                                    .padding(horizontal = 9.dp, vertical = 5.dp))
+                        }
+                    }
+                    if (!auto) TextButton({ allow = null }) { Text("Que lo decida Faro", color = Muted) }
+                    Text("Banco, mapas, llamadas y mensajes de texto siempre se permiten.", color = Muted, fontSize = 12.sp)
+                }
                 if (id != null) {
                     VSpace(6)
                     TextButton({ confirmDelete = true }) { Text("Eliminar actividad", color = Tomato) }
@@ -325,8 +368,11 @@ private fun ActivityDialog(id: String?, onDismiss: () -> Unit) {
             TextButton(enabled = label.isNotBlank(), onClick = {
                 Engine.editConfig { c ->
                     val acts = c.optJSONObject("activities") ?: JSONObject().also { c.put("activities", it) }
-                    acts.put(id ?: "a${System.nanoTime().toString(16)}",
-                        JSONObject().put("label", label.trim()).put("color", color).put("kind", kind))
+                    val act = (id?.let { acts.optJSONObject(it) } ?: JSONObject())
+                        .put("label", label.trim()).put("color", color).put("kind", kind).put("lock", lock)
+                    if (intent.isNotBlank()) act.put("intent", intent.trim()) else act.remove("intent")
+                    allow.let { if (it == null) act.remove("allow") else act.put("allow", org.json.JSONArray(it.toList())) }
+                    acts.put(id ?: "a${System.nanoTime().toString(16)}", act)
                 }
                 onDismiss()
             }) { Text("Guardar", color = Tomato) }

@@ -16,11 +16,15 @@ import android.view.inputmethod.InputMethodManager
  * Vigilancia (lo mismo que hacía la compu por ADB, pero desde el teléfono):
  *  - a cualquier hora, si abres una app que el Panel ADB tiene bloqueada, te saca de ella ([Blocks]);
  *  - a cualquier hora, revisa lo que se ve en pantalla y las apps que instalas ([ScreenWatch], [Strikes]);
- * y durante el trabajo (también si la compu está esperando a que empieces, ver [Engine.onDuty]):
- *  - si abres una app que distrae (la lista, o cualquier juego), avisa y a los pocos segundos te manda al
- *    inicio; si vuelves a entrar poco después, te saca al instante, y a la tercera bloquea el teléfono;
- *  - si llevas mucho rato en el teléfono, avisa y luego lo bloquea; si lo vuelves a usar poco después de
- *    un bloqueo, los tiempos se acortan;
+ *  - en los descansos tapa el teléfono con el telón ([Curtain]), salvo llamadas, banco y mensajes;
+ * y durante el trabajo (también si la compu está esperando a que empieces, ver [Engine.onDuty]), si la
+ * actividad del horario vigila el teléfono ([Policy]):
+ *  - si abres una app que distrae en esta actividad (redes, video, juegos, la lista…), avisa y a los pocos
+ *    segundos te manda al inicio; si vuelves a entrar poco después, te saca al instante, y a la tercera
+ *    bloquea el teléfono;
+ *  - WhatsApp: chats con tope por pomodoro; estados, canales y grupos no permitidos distraen ([WhatsApp]);
+ *  - si llevas mucho rato en apps que no tocan, avisa y luego lo bloquea (banco, mapas, lo esencial y lo que
+ *    la actividad permite no cuentan); si lo vuelves a usar poco después de un bloqueo, los tiempos se acortan;
  *  - al terminar el descanso, si sigues en el teléfono, avisa y lo bloquea;
  *  - según cuánto llevas sin arrancar en la compu ([Engine.nudge]): con 2, modo estricto (sin tiempo de
  *    gracia en lo que distrae y tiempos cortos en lo demás); con 3, se bloquea en cuanto usas algo que no
@@ -29,7 +33,9 @@ import android.view.inputmethod.InputMethodManager
 class GuardService : AccessibilityService() {
     private val handler = Handler(Looper.getMainLooper())
     private var fg = ""
-    private var onSince = 0L
+    private var usedMs = 0L                      // tiempo en apps que no tocan, desde que prendiste la pantalla
+    private var lastAccrual = 0L
+    private var waWarned = false
     private var warned = false
     private var distractPkg: String? = null
     private var lastBlockedPkg = ""
@@ -92,11 +98,13 @@ class GuardService : AccessibilityService() {
         val pkg = e?.packageName?.toString() ?: return
         val state = e.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
         SelfDefense.onEvent(this, pkg, state)
+        if (pkg in WhatsApp.PKGS) WhatsApp.onEvent(this, e.className?.toString(), state)
         if (!state) {   // scroll o contenido nuevo
             if (pkg !in ignored) screen?.onContent(pkg)
             return
         }
         Strikes.onWindow(this, pkg)
+        Updater.onWindow(this, pkg)
         if (pkg in ignored) return
         fg = pkg
         screen?.onForeground(pkg, e.className?.toString() ?: "")
@@ -114,7 +122,7 @@ class GuardService : AccessibilityService() {
             }
             return
         }
-        if (Engine.onDuty()) check()
+        if (Engine.onDuty() || Curtain.breakLocked()) check()
     }
 
     private val cfg get() = Engine.cfg
@@ -123,12 +131,22 @@ class GuardService : AccessibilityService() {
 
     private fun check() {
         nudgeAlerts()
-        if (!Engine.onDuty() || !screenOn()) {
-            onSince = 0
+        val on = screenOn()
+        // Descanso: el telón tapa lo que no sea llamadas, banco, mapas o mensajes (ver [Curtain]).
+        if (on && Curtain.breakLocked() && Curtain.visible == null && fg.isNotEmpty() && !Curtain.breakAllowed(this, fg) &&
+            !Curtain.inCall(this) && !Updater.confirming() && !Strikes.busy()) {
+            Curtain.show(this, "break")
+        }
+        if (!Engine.onDuty() || !on) {
+            usedMs = 0
+            lastAccrual = 0
             warned = false
             distractPkg = null
+            WhatsApp.away()
             return
         }
+        val p = Policy.at()
+        if (!p.phone) return   // esta actividad no vigila el teléfono (lock = "pc" o "none")
         val now = System.currentTimeMillis()
         val level = Engine.nudge()
         val essential = isEssential(fg)
@@ -140,7 +158,27 @@ class GuardService : AccessibilityService() {
             }
             return
         }
-        if (cfg.optBoolean("phone_distract", true) && isDistracting(fg)) {
+        if (fg in WhatsApp.PKGS && cfg.optBoolean("wa_guard", true)) {
+            lastAccrual = now
+            if (!WhatsApp.tick(p)) {
+                if (!waWarned && !p.chatFree && WhatsApp.leftSec() in 1..60) {
+                    waWarned = true
+                    Notifier.alert(this, "💬 Te queda 1 min de WhatsApp", "En este pomodoro. Cierra la conversación.", vibrate = false)
+                }
+                return
+            }
+            if (distractPkg != fg) {
+                distractPkg = fg
+                val pkg = fg
+                warnThen("📵 Cierra WhatsApp", WhatsApp.why() + "\nEn ${minOf(readSec, 8)} s te saco.", minOf(readSec, 8)) {
+                    if (fg == pkg && WhatsApp.tick(Policy.at())) performGlobalAction(GLOBAL_ACTION_HOME)
+                }
+            }
+            return
+        }
+        WhatsApp.away()
+        waWarned = waWarned && WhatsApp.leftSec() < 60
+        if (cfg.optBoolean("phone_distract", true) && Policy.distracting(this, fg, p)) {
             val pkg = fg
             val name = appName(pkg)
             val recent = kicks.getOrPut(pkg) { mutableListOf() }.apply { removeAll { now - it > REENTRY_MS } }
@@ -170,8 +208,12 @@ class GuardService : AccessibilityService() {
         }
         distractPkg = null
         if (!cfg.optBoolean("phone_work_guard", true)) return
-        if (onSince == 0L) onSince = now
-        val mins = (now - onSince) / 60000.0
+        // El banco, los mapas, lo esencial y lo que permite la actividad no cuentan como «estar en el teléfono».
+        val dt = if (lastAccrual > 0) minOf(now - lastAccrual, 10_000L) else 0L
+        lastAccrual = now
+        if (Policy.allowed(this, fg, p) || fg.isEmpty()) return
+        usedMs += dt
+        val mins = usedMs / 60000.0
         var warnMin = cfg.optDouble("phone_work_warn_min", 3.0)
         var lockMin = cfg.optDouble("phone_work_lock_min", 5.0)
         if ((level >= 2 || recentLock) && !essential) {   // modo estricto o recién te bloqueé
@@ -179,7 +221,7 @@ class GuardService : AccessibilityService() {
             lockMin = minOf(lockMin, 1.5)
         }
         if (mins >= lockMin) {
-            onSince = 0
+            usedMs = 0
             warned = false
             warnThen("🔒 Deja el teléfono", "Llevas ${mins.toInt()} min en él en horario de trabajo.\nEn $readSec s se bloquea.") {
                 lock()
@@ -206,23 +248,9 @@ class GuardService : AccessibilityService() {
 
     private fun isEssential(pkg: String): Boolean {
         val extra = cfg.optJSONArray("phone_essential")
-        return pkg in essentialBase || BankMode.isBank(pkg) ||
+        return pkg in essentialBase || Apps.category(this, pkg) in Apps.ALWAYS ||
             (extra != null && (0 until extra.length()).any { extra.optString(it) == pkg })
     }
-
-    private fun isDistracting(pkg: String): Boolean {
-        val list = cfg.optJSONArray("phone_distracting")
-        if (list != null && (0 until list.length()).any { list.optString(it) == pkg }) return true
-        return games.getOrPut(pkg) {   // cualquier juego cuenta, aunque no esté en la lista
-            runCatching {
-                val info = packageManager.getApplicationInfo(pkg, 0)
-                info.category == android.content.pm.ApplicationInfo.CATEGORY_GAME ||
-                    info.flags and android.content.pm.ApplicationInfo.FLAG_IS_GAME != 0
-            }.getOrDefault(false)
-        }
-    }
-
-    private val games = mutableMapOf<String, Boolean>()
 
     /** Primero avisa (con tiempo para leer) y después ejecuta `action` si sigue aplicando. */
     private fun warnThen(title: String, text: String, secs: Int = readSec, action: () -> Unit) {
@@ -232,7 +260,7 @@ class GuardService : AccessibilityService() {
 
     private fun lock() {
         lastLock = System.currentTimeMillis()
-        onSince = 0
+        usedMs = 0
         warned = false
         performGlobalAction(GLOBAL_ACTION_HOME)
         performGlobalAction(GLOBAL_ACTION_LOCK_SCREEN)

@@ -38,9 +38,9 @@ def send(cmd):
 class Tray:
     def __init__(self):
         self.ind = lib.app_indicator_new(b"pomodoro-ahuevo", b"alarm-symbolic", CATEGORY_APPLICATION_STATUS)
-        lib.app_indicator_set_title(self.ind, b"Pomodoro")
+        lib.app_indicator_set_title(self.ind, b"Faro")
         self.menu = Gtk.Menu()
-        self.status = self.item("Pomodoro", None)
+        self.status = self.item("Faro", None)
         self.status.set_sensitive(False)
         self.phone = self.item("📱 …", None)
         self.phone.set_sensitive(False)
@@ -82,7 +82,7 @@ class Tray:
         self.toggle.set_sensitive(st.get("work", True))
         self.brk.set_sensitive(st.get("work", True))
         icon = b"dialog-warning-symbolic" if st.get("alert") else b"alarm-symbolic"
-        lib.app_indicator_set_icon_full(self.ind, icon, b"Pomodoro")
+        lib.app_indicator_set_icon_full(self.ind, icon, b"Faro")
         return True
 
 

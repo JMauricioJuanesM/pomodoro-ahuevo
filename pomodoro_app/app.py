@@ -6,10 +6,12 @@ from tkinter import messagebox
 
 from .config import load_config
 from .constants import COLORS, NAMES
+from .controller.faro import FaroMixin
 from .controller.focus import FocusMixin
 from .controller.reminders import RemindersMixin
 from .controller.timer import TimerMixin
 from .controller.workday import WorkdayMixin
+from .services import faro_sync
 from .services.autostart import sync_autostart
 from .services.judge import Judge
 from .services.phone import Phone
@@ -23,10 +25,10 @@ from .ui.main_window import MainWindowMixin
 from .ui.widget import Widget
 
 
-class Pomodoro(MainWindowMixin, TimerMixin, WorkdayMixin, RemindersMixin, FocusMixin, tk.Tk):
+class Pomodoro(MainWindowMixin, TimerMixin, WorkdayMixin, RemindersMixin, FocusMixin, FaroMixin, tk.Tk):
     def __init__(self, sock, auto=False):
         super().__init__()
-        self.title("Pomodoro")
+        self.title("Faro")
         self.minsize(410, 1)   # la altura se ajusta sola (crece cuando aparece el aviso del teléfono)
         self.resizable(False, False)
         self.cfg = load_config()
@@ -68,6 +70,7 @@ class Pomodoro(MainWindowMixin, TimerMixin, WorkdayMixin, RemindersMixin, FocusM
         self.presence = Presence()
         self.judge = Judge(self)
         self.init_focus()
+        self.init_faro()
 
         self._build()
         self.widget = Widget(self)
@@ -86,6 +89,7 @@ class Pomodoro(MainWindowMixin, TimerMixin, WorkdayMixin, RemindersMixin, FocusM
         elif auto and self.tray_ok:   # al iniciar sesión arranca discreto, en la barra
             self.withdraw()
         self.phone.tick(False)
+        faro_sync.start()
         self.render()
         self.tick()
 

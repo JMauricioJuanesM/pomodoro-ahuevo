@@ -57,7 +57,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.mauriciojuanes.pomodoro.BuildConfigInfo
+import com.mauriciojuanes.pomodoro.Updater
 import com.mauriciojuanes.pomodoro.Engine
 import com.mauriciojuanes.pomodoro.GuardService
 import com.mauriciojuanes.pomodoro.Store
@@ -96,7 +96,7 @@ fun permissions(ctx: Context): List<Perm> {
 }
 
 @Composable
-fun SettingsScreen(openApps: () -> Unit) {
+fun SettingsScreen(openApps: () -> Unit, openSub: (String) -> Unit) {
     observe()
     val ctx = LocalContext.current
     var server by remember { mutableStateOf(false) }
@@ -106,6 +106,44 @@ fun SettingsScreen(openApps: () -> Unit) {
         item {
             observe()
             ScreenTitle("Ajustes", "Los cambios se aplican también en la compu.")
+
+            Section {
+                SettingRow("⏰ Recordatorios", "Avisos a una hora fija", onClick = { openSub("reminders") }) {
+                    Icon(Icons.Filled.KeyboardArrowRight, null, tint = Muted)
+                }
+                RowDivider()
+                SettingRow("🔒 Bloqueos", "DNS, Xiaomi y apps bloqueadas (Panel ADB)", onClick = { openSub("blocks") }) {
+                    Icon(Icons.Filled.KeyboardArrowRight, null, tint = Muted)
+                }
+            }
+
+            Section("Faro", footer = "Las frases las reescribe cada noche la IA según tu diario y tus 👍/👎. Las tareas vienen de TickTick.") {
+                SwitchRow("Frases al desbloquear", "Pantalla completa, unos segundos", cBool("mind_on_unlock", true)) { setCfg("mind_on_unlock", it) }
+                if (cBool("mind_on_unlock", true)) {
+                    RowDivider()
+                    StepperRow("…a lo más cada", cInt("mind_unlock_every_min", 20), 5..240, 5, " min") { setCfg("mind_unlock_every_min", it) }
+                }
+                RowDivider()
+                SwitchRow("El descanso tapa el teléfono", "Como en la compu; llamadas, banco y WhatsApp sí", cBool("phone_break_lock", true)) {
+                    setCfg("phone_break_lock", it)
+                }
+                RowDivider()
+                SwitchRow("Recordatorios tajantes de tareas", "Pantalla completa al vencer", cBool("tasks_firm", true)) { setCfg("tasks_firm", it) }
+                RowDivider()
+                SwitchRow("Actualizarse sola", Updater.status.ifEmpty { "Versión ${Updater.installedName(ctx)}" }, cBool("auto_update", true)) {
+                    setCfg("auto_update", it)
+                }
+            }
+
+            Section("WhatsApp en el trabajo", footer = "Los estados, canales y comunidades siempre distraen. En actividades de chat (p. ej. «💬») no hay tope.") {
+                SwitchRow("Vigilar WhatsApp", "Chats sí, con tope", cBool("wa_guard", true)) { setCfg("wa_guard", it) }
+                if (cBool("wa_guard", true)) {
+                    RowDivider()
+                    StepperRow("Tope por pomodoro", cInt("wa_budget_min", 5), 1..25, unit = " min") { setCfg("wa_budget_min", it) }
+                    RowDivider()
+                    SwitchRow("Grupos permitidos", "Si no, solo chats con personas", cBool("wa_groups_ok", false)) { setCfg("wa_groups_ok", it) }
+                }
+            }
 
             Section("Tiempos") {
                 StepperRow("Trabajo", cInt("work_min", 25), 1..180, unit = " min") { setCfg("work_min", it) }
@@ -209,7 +247,7 @@ fun SettingsScreen(openApps: () -> Unit) {
                 SettingRow("Servidor", status, onClick = { server = true },
                     leading = { Dot(if (Engine.online) Ok else Warn, 10) }) { Icon(Icons.Filled.KeyboardArrowRight, null, tint = Muted) }
             }
-            Text("Pomodoro ${BuildConfigInfo.VERSION}", color = Line, fontSize = 12.sp,
+            Text("Faro ${Updater.installedName(ctx)}", color = Line, fontSize = 12.sp,
                 modifier = Modifier.fillMaxWidth().padding(bottom = 28.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
         }
     }

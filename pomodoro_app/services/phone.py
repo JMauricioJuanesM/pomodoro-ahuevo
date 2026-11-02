@@ -1,5 +1,7 @@
 """Teléfono por ADB: conexión automática (cable/WiFi/búsqueda en la red), avisos, bloqueo y vigilancia."""
+import hashlib
 import json
+import os
 import queue
 import re
 import shlex
@@ -8,11 +10,12 @@ import socket
 import subprocess
 import threading
 import time
+import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 
 from ..config import save_config
 from ..constants import VIBRATION
-from ..paths import PANEL_CONFIG, PANEL_META, SYNC_FILE
+from ..paths import CONFIG_DIR, PANEL_CONFIG, PANEL_META, SYNC_FILE
 from ..core.timefmt import fmt
 from .system import notify, run
 
@@ -46,6 +49,7 @@ class Phone:
         self.distract_pkg = None      # app que distrae sobre la que ya se avisó
         self.dnd_by_us = False
         self.app_installed = None     # ¿está instalada la app del teléfono? (se revisa cada tanto)
+        self.update_tried = 0         # versión que ya intentamos instalar por ADB
         self.last_app_check = 0
         threading.Thread(target=self._loop, daemon=True).start()
 
@@ -254,6 +258,11 @@ class Phone:
             self.adb("shell", "pm", "grant", APP_PKG, "android.permission.WRITE_SECURE_SETTINGS")
             # Saber que ya saliste de la app del banco (la vigilancia se apaga mientras la usas).
             self.adb("shell", "appops", "set", APP_PKG, "GET_USAGE_STATS", "allow")
+        if self.app_installed and sync and sync.phone_app_info() and not sync.phone_app_info().get("install_ok"):
+            # Que la app se actualice sola desde el hub (Updater.kt), aunque la compu esté apagada.
+            self.adb("shell", "appops", "set", APP_PKG, "REQUEST_INSTALL_PACKAGES", "allow")
+        if self.app_installed:
+            self.update_app()
         if not self.app_installed or self.app_handles():
             return
         for perm in ("android.permission.POST_NOTIFICATIONS",):
@@ -273,6 +282,31 @@ class Phone:
         except (OSError, ValueError, KeyError):
             extras = []
         self.shell("am", "start-foreground-service", "-n", f"{APP_PKG}/.PomodoroService", *extras)
+
+    def update_app(self):
+        """Si el hub publicó una versión más nueva que la del teléfono, la instala por ADB (más rápido que esperar
+        a que el teléfono la baje y la acepte). Sin compu, el teléfono se actualiza solo."""
+        sync = getattr(self.app, "sync", None)
+        rel = ((sync and sync.remote) or {}).get("release") or {}
+        have = (sync.phone_app_info() if sync else {}).get("version_code") or 0
+        want = rel.get("version_code") or 0
+        if not want or not have or want <= have or self.update_tried == want:
+            return
+        self.update_tried = want
+        path = os.path.join(CONFIG_DIR, "Faro.apk")
+        try:
+            req = urllib.request.Request(sync.settings["url"].rstrip("/") + "/api/apk",
+                                         headers={"Authorization": "Bearer " + sync.settings["token"]})
+            with urllib.request.urlopen(req, timeout=120) as r, open(path, "wb") as f:
+                f.write(r.read())
+            with open(path, "rb") as f:
+                if rel.get("sha256") and hashlib.sha256(f.read()).hexdigest() != rel["sha256"]:
+                    return
+        except OSError:
+            return
+        out = self.adb("install", "-r", path, timeout=180)
+        if "Success" in out:
+            notify("📱 Faro se actualizó en el teléfono", f"Versión {rel.get('version_name', want)}")
 
     # ---------- acciones que usa la app ----------
     def notify(self, title, text, vibrate=True):

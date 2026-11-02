@@ -128,6 +128,67 @@ object Store {
         get() = p.getBoolean("dnd_by_us", false)
         set(v) = p.edit().putBoolean("dnd_by_us", v).apply()
 
+    // ---------- Faro: lo que llega del hub (ver [Hub]) ----------
+    private fun obj(key: String) = runCatching { JSONObject(str(key, "{}")) }.getOrDefault(JSONObject())
+    private fun arr(key: String) = runCatching { JSONArray(str(key, "[]")) }.getOrDefault(JSONArray())
+
+    /** Actividad → {"allow": [...], "why": "..."} que dedujo la IA (ver [Policy]). */
+    var policies: JSONObject
+        get() = obj("policies")
+        set(v) = put("policies", v.toString())
+    private var aiCatCache: JSONObject? = null
+    var aiCategories: JSONObject
+        get() = aiCatCache ?: obj("ai_categories").also { aiCatCache = it }
+        set(v) {
+            aiCatCache = v
+            put("ai_categories", v.toString())
+        }
+    var aiCategoriesRev: Int
+        get() = p.getInt("ai_categories_rev", 0)
+        set(v) = p.edit().putInt("ai_categories_rev", v).apply()
+    var asks: JSONArray
+        get() = arr("asks")
+        set(v) = put("asks", v.toString())
+    var answeredAsks: Set<String>
+        get() = p.getStringSet("answered_asks", emptySet()) ?: emptySet()
+        set(v) = p.edit().putStringSet("answered_asks", v.toList().takeLast(50).toSet()).apply()
+    var currentTask: JSONObject?
+        get() = str("current_task").takeIf { it.isNotEmpty() && it != "null" }?.let { runCatching { JSONObject(it) }.getOrNull() }
+        set(v) = put("current_task", v?.toString() ?: "")
+    var inboxUnread: Int
+        get() = p.getInt("inbox_unread", 0)
+        set(v) = p.edit().putInt("inbox_unread", v).apply()
+    var mind: JSONObject
+        get() = obj("mind")
+        set(v) = put("mind", v.toString())
+    var tasks: JSONObject
+        get() = obj("tasks")
+        set(v) = put("tasks", v.toString())
+    var journal: JSONArray
+        get() = arr("journal")
+        set(v) = put("journal", v.toString())
+    var inbox: JSONArray
+        get() = arr("inbox")
+        set(v) = put("inbox", v.toString())
+    /** Peticiones al hub que no se han podido mandar (ver [Sync]). */
+    var outbox: JSONObject
+        get() = obj("outbox")
+        set(v) = put("outbox", v.toString())
+    var appsReported: String
+        get() = str("apps_reported")
+        set(v) = put("apps_reported", v)
+
+    /** Últimas frases mostradas (para no repetirlas, ver [Mind]). */
+    var mindRecent: List<String>
+        get() = str("mind_recent").split('|').filter { it.isNotEmpty() }
+        set(v) = put("mind_recent", v.joinToString("|"))
+
+    fun revSeen(key: String) = p.getInt("rev_$key", -1)
+    fun setRevSeen(key: String, v: Int) = p.edit().putInt("rev_$key", v).apply()
+
+    fun long(key: String) = p.getLong(key, 0L)
+    fun setLong(key: String, v: Long) = p.edit().putLong(key, v).apply()
+
     // ---------- estadísticas por día (pomodoros y segundos de teléfono trabajando) ----------
     private fun dayMap(key: String) = JSONObject(str(key, "{}"))
 

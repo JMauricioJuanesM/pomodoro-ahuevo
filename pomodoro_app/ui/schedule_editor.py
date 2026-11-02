@@ -8,10 +8,13 @@ from tkinter import colorchooser, messagebox, ttk
 
 from ..config import default_schedule, save_config
 from ..constants import DAY_LETTERS, DAYS, EMOJIS, KIND_ICONS, KINDS, PRESET_COLORS
-from ..core.schedule import is_work
+from ..core.schedule import is_work, lock_of
 from ..core.timefmt import hour_label
 from ..services.autostart import sync_autostart
 from .theme import text_color
+
+
+LOCKS = {"both": "💻📱 Ambos", "pc": "💻 Compu", "phone": "📱 Teléfono", "none": "Ninguno"}
 
 
 class ActivityDialog(tk.Toplevel):
@@ -59,8 +62,20 @@ class ActivityDialog(tk.Toplevel):
             ttk.Radiobutton(f, text=text, value=k, variable=self.kind).grid(row=7 + i, column=0, columnspan=2,
                                                                              sticky="w")
 
+        r = 7 + len(KINDS)
+        ttk.Label(f, text="¿Dónde aplica? (pomodoro, descansos y vigilancia)").grid(row=r, column=0, sticky="w", pady=(12, 0))
+        self.lock = tk.StringVar(value=lock_of(a))
+        lf = ttk.Frame(f)
+        lf.grid(row=r + 1, column=0, columnspan=2, sticky="w")
+        for k, text in LOCKS.items():
+            ttk.Radiobutton(lf, text=text, value=k, variable=self.lock).pack(side="left", padx=(0, 8))
+        ttk.Label(f, text="¿Qué haces aquí? (la IA decide qué apps y páginas se valen)").grid(
+            row=r + 2, column=0, sticky="w", pady=(12, 0))
+        self.intent = tk.StringVar(value=a.get("intent", ""))
+        ttk.Entry(f, textvariable=self.intent, width=40).grid(row=r + 3, column=0, columnspan=2, sticky="we")
+
         btns = ttk.Frame(f)
-        btns.grid(row=7 + len(KINDS), column=0, columnspan=2, sticky="we", pady=(16, 0))
+        btns.grid(row=r + 4, column=0, columnspan=2, sticky="we", pady=(16, 0))
         ttk.Button(btns, text="Guardar", command=self.save).pack(side="right")
         ttk.Button(btns, text="Cancelar", command=self.destroy).pack(side="right", padx=6)
         if aid:
@@ -85,7 +100,14 @@ class ActivityDialog(tk.Toplevel):
         label = self.label.get().strip()
         if not label:
             return
-        self.result = ("save", {"label": label, "color": self.color, "kind": self.kind.get()})
+        # Se conserva lo que no se edita aquí (p. ej. `allow`, las apps permitidas que se escogen en el teléfono).
+        act = dict(self.editor.acts.get(self.aid) or {})
+        act.update(label=label, color=self.color, kind=self.kind.get(), lock=self.lock.get())
+        if self.intent.get().strip():
+            act["intent"] = self.intent.get().strip()
+        else:
+            act.pop("intent", None)
+        self.result = ("save", act)
         self.destroy()
 
     def delete(self):

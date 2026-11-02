@@ -16,7 +16,7 @@ import time
 
 from ..config import save_config
 from ..core.focus import cache_key, classify, is_browser, is_call, norm_title
-from ..core.schedule import act_kind, act_label, activity, cell_activity, is_work
+from ..core.schedule import act_kind, act_label, activity, cell_activity, is_work, pc_enforced
 from ..core.timefmt import fmt
 from ..services.system import notify
 from ..ui.overlays import NudgeScreen
@@ -45,7 +45,8 @@ class FocusMixin:
 
     # ---------- consultas ----------
     def focus_on(self):
-        return self.cfg["focus_sensor"] and self.presence.fresh() is not None
+        return (self.cfg["focus_sensor"] and pc_enforced(self.cfg, dt.datetime.now())
+                and self.presence.fresh() is not None)
 
     def on_duty(self):
         """¿Deberías estar trabajando? (el pomodoro corre o está armado esperando a que empieces)"""
@@ -129,7 +130,8 @@ class FocusMixin:
         now = time.time()
         step = min(now - self.last_focus, 5)
         self.last_focus = now
-        s = self.presence.fresh() if self.cfg["focus_sensor"] else None
+        # Una actividad que solo vigila el teléfono (`lock`: "phone"/"none") no presiona en la compu.
+        s = self.presence.fresh() if self.cfg["focus_sensor"] and pc_enforced(self.cfg, dt.datetime.now()) else None
         if (s is None or self.phase != "work" or self.shutdown_at
                 or (self.overlay and not isinstance(self.overlay, NudgeScreen))):
             self.focus_state = self.focus_what = ""

@@ -1,7 +1,28 @@
-# Pomodoro a huevo
+# Faro
 
-Pomodoro para GNOME que en los descansos **tapa la pantalla** y no te deja seguir trabajando.
-Se arma con un horario semanal, recordatorios, un widget redondo y control del teléfono por ADB.
+(Antes «Pomodoro a huevo».) Tu sistema de enfoque y bienestar: pomodoro para GNOME que en los descansos
+**tapa la pantalla** (también la del teléfono), con horario semanal, recordatorios, tareas de TickTick, diario
+de urgencias y recaídas, frases para reforzar creencias, y un ciclo nocturno que **se mejora solo** con lo que
+pasa y lo que le dices. Por dentro los paquetes conservan el nombre viejo (`pomodoro_app`,
+`com.mauriciojuanes.pomodoro`) para no perder permisos ni configuración.
+
+## Faro: lo nuevo
+
+| Pieza | Qué hace |
+|---|---|
+| **Dónde aplica cada actividad** | En el horario, cada actividad dice si aplica en 💻📱 ambos, solo compu, solo teléfono o ninguno (`lock`). Una actividad «solo teléfono» no tapa la compu ni activa el sensor; «solo compu» no vigila el teléfono. |
+| **Apps permitidas por actividad** | Cada actividad permite tipos de app en el teléfono (`allow`: banco, mensajes, mapas, trabajo, estudio, lectura, compras, música, redes, video, juegos). Si no escoges, Faro lo deduce: primero la IA nocturna (`policies` del hub, con la `intent` de la actividad), si no, el nombre («👤 trámites» → banco, compras, mapas…). **Banco, mapas y lo esencial nunca se bloquean** ni cuentan como «estar en el teléfono»; las apps de banco se reconocen solas (paquete y nombre), aunque sean nuevas. |
+| **WhatsApp con tope** | En el trabajo: chats con personas sí, hasta `wa_budget_min` (5) min por pomodoro; estados, canales, comunidades y grupos no permitidos (`wa_groups_allowed`, `wa_groups_ok`) te sacan desde el primer momento. En actividades de chat (p. ej. «💬») no hay tope. |
+| **Telón del teléfono** | Pantalla completa como la de la compu: en los descansos tapa el teléfono (llamadas, banco y WhatsApp sí; `phone_break_lock`, `break_allow`), y también muestra frases al desbloquear, preguntas, tareas vencidas y el SOS de urgencia (respiración guiada). |
+| **Frases y creencias** | «Autolavado de cerebro»: frases al desbloquear (cada `mind_unlock_every_min`), en los descansos (también en la compu) y tras una urgencia o recaída, con 👍/👎. Cada noche la IA las reescribe según tu diario y tus reacciones, y lista las creencias que estás cambiando. |
+| **Diario** | Recaídas, urgencias, victorias, notas, ánimo y sugerencias, desde la app (pestaña **Yo**), la web (`/app`) o el bot (`/recai`, `/venci`); lo que detecta la vigilancia entra solo (marcado «auto»). Racha y mapa de 4 semanas. |
+| **Tareas de TickTick** | El hub refleja TickTick cada 5 min (pestaña **Tareas** y web). Al vencer una tarea con hora (o a las `tasks_allday_hour` las de todo el día) sale en pantalla completa en compu y teléfono: ✅ hecha, 🎯 la hago ahora (sale en el pomodoro), ⏰ posponer (a la tercera, con razón). |
+| **Preguntas** | El sistema te pregunta (qué mejorarías, cómo vas…) en pantalla completa: en el descanso o fuera del trabajo, nunca a media racha de trabajo. Cada día a media tarde, si nadie preguntó nada, pregunta por sugerencias. Las respuestas van al diario. |
+| **Telegram sin ruido** | Lo proactivo del bot llega en una línea con enlace al buzón (el texto completo vive en la app); nada durante un pomodoro (se junta en un resumen para el descanso) y como mucho un mensaje cada 45 min. Los enlaces `https://pomodoro.mauriciojuanes.com/app#…` abren la app del teléfono. |
+| **Ciclo nocturno** (`server/nightly/`, en el VPS) | 01:30 `reflect`: Claude lee 14 días (diario, alertas, estadísticas, reacciones, respuestas, tareas pospuestas) y reescribe frases, políticas por actividad y categorías de apps, deja preguntas para mañana y un reporte en el buzón. 02:15 `improve.sh`: Claude Code hace 1-2 mejoras de código pequeñas en la rama `auto` (nunca en lo que protege contra recaídas), y solo si pasan las pruebas se compila y publica la app. Cada 15 min `watch`: si la versión nueva falla sus pruebas en el teléfono, republica la anterior. |
+| **Actualizaciones sin la compu** | El VPS compila y publica el APK (`/api/release`, `/api/apk`); el teléfono lo descarga, revisa su huella y se lo instala (la accesibilidad acepta el diálogo), fuera de los pomodoros. Al arrancar corre sus **pruebas automáticas** (`SelfTest`) y las reporta. Con el teléfono conectado por ADB, la compu lo instala ella misma. Al prender la compu (`services/faro_sync.py`) sube tu código al VPS y trae las mejoras nocturnas si tu copia está limpia. |
+
+Todo esto se configura en *Ajustes → Faro* del teléfono (o en `config.json`) y viaja entre compu y teléfono.
 
 ## Tipos de actividad del horario
 
@@ -91,8 +112,9 @@ WhatsApp), los mensajes de «ver una vez» ni la cámara. Las apps instaladas qu
 una advertencia; si ya tenían, se desinstalan al llegar.
 
 ```bash
-./android/build.sh        # compila en el VPS e instala por ADB
-./server/deploy.sh        # sube el servidor de sincronización
+./android/build.sh        # compila en el VPS e instala por ADB (para probar sin publicar)
+./server/deploy.sh        # sube el hub y el ciclo nocturno (/opt/faro) al VPS
+ssh contabo /opt/faro/build.sh main "notas"   # compila, prueba y publica: el teléfono se actualiza solo
 ```
 
 La sincronización se activa con `~/.config/pomodoro-ahuevo/sync.json`:
@@ -122,6 +144,7 @@ pomodoro_app/
   controller/                comportamiento: temporizador, jornada, recordatorios
   ui/                        ventanas Tk: principal, pantallas completas, widget, editor, ajustes
   app.py                     estado y unión de todo
-server/                      sincronización (FastAPI en Docker, detrás de nginx en el VPS)
+server/                      hub (FastAPI en Docker, detrás de nginx en el VPS) y su web /app
+server/nightly/              ciclo nocturno: reflexión con IA, mejora de código, compilación y rollback
 android/                     app del teléfono (Kotlin, sin dependencias)
 ```

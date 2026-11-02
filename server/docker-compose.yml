@@ -6,5 +6,7 @@ services:
     env_file: .env
     volumes:
       - ./data:/data
+      # El token de TickTick lo mantiene el bot; el hub solo lo lee para el espejo de tareas.
+      - /root/asistente-personal/data/ticktick_auth.json:/ticktick/ticktick_auth.json:ro
     ports:
       - "127.0.0.1:8090:8000"

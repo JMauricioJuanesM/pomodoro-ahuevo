@@ -13,7 +13,8 @@ import java.net.URL
 object Sync {
     private val main = Handler(Looper.getMainLooper())
     private val lock = Object()
-    private val pending = LinkedHashMap<String, JSONObject>()   // "timer" / "config" / "blocks" / "heartbeat" → cuerpo
+    // "timer" / "config" / "blocks" / "heartbeat" / "alert#…" / "post#…" / "put#…" → cuerpo
+    private val pending = LinkedHashMap<String, JSONObject>()
     private var started = false
     @Volatile private var rev = -1   // -1: la primera consulta responde al instante
     @Volatile var lastError = ""
@@ -24,6 +25,11 @@ object Sync {
     fun start() {
         if (started) return
         started = true
+        // Lo que quedó sin mandar (diario, respuestas…) de la ejecución anterior.
+        synchronized(lock) {
+            val saved = Store.outbox
+            saved.keys().forEach { pending[it] = saved.getJSONObject(it) }
+        }
         Thread(::pollLoop, "pomodoro-poll").apply { isDaemon = true }.start()
         Thread(::sendLoop, "pomodoro-send").apply { isDaemon = true }.start()
     }
@@ -79,22 +85,61 @@ object Sync {
                     "config" -> req("PUT", "/api/config", JSONObject().put("source", "phone").put("config", body))
                     "blocks" -> req("PUT", "/api/blocks", JSONObject().put("source", "phone").put("blocks", body))
                     "alert" -> req("POST", "/api/alert", body.put("source", "phone"))
+                    "post", "put" -> req(kind.substringBefore('#').uppercase(), body.getString("path"), body.getJSONObject("body"))
                     else -> req("POST", "/api/heartbeat", body.put("source", "phone"))
                 }
-                synchronized(lock) { if (pending[kind] === body) pending.remove(kind) }
+                done(kind, body)
             } catch (e: Exception) {
                 lastError = e.message ?: e.javaClass.simpleName
-                Thread.sleep(15000)
+                // Un 4xx no se arregla reintentando (p. ej. la tarea ya no existe): se descarta.
+                if (lastError.startsWith("HTTP 4") && kind.contains('#')) done(kind, body) else Thread.sleep(15000)
             }
         }
     }
 
     private fun queue(kind: String, body: JSONObject) = synchronized(lock) {
         pending[kind] = body
+        if (durable(kind)) saveOutbox()
         lock.notifyAll()
     }
 
+    private fun done(kind: String, body: JSONObject) = synchronized(lock) {
+        if (pending[kind] === body) pending.remove(kind)
+        if (durable(kind)) saveOutbox()
+    }
+
+    /** Lo que registras tú sobrevive a que maten la app sin red. */
+    private fun durable(kind: String) = kind.startsWith("post#") || kind.startsWith("put#") || kind.startsWith("alert#")
+
+    private fun saveOutbox() {
+        val o = JSONObject()
+        pending.filterKeys(::durable).forEach { (k, v) -> o.put(k, v) }
+        Store.outbox = o
+    }
+
     fun pushTimer(t: JSONObject) = queue("timer", t)
+
+    /** Una petición cualquiera al hub, encolada con reintentos (cada una aparte). Ver [Hub]. */
+    fun post(path: String, body: JSONObject) = queue("post#${System.nanoTime()}", JSONObject().put("path", path).put("body", body))
+
+    fun put(path: String, body: JSONObject) = queue("put#${System.nanoTime()}", JSONObject().put("path", path).put("body", body))
+
+    /** Lectura directa (en un hilo de fondo). */
+    fun get(path: String): JSONObject = req("GET", path)
+
+    /** Descarga un archivo del hub (el APK nuevo, ver [Updater]). */
+    fun download(path: String, to: java.io.File) {
+        val c = URL(Store.url + path).openConnection() as HttpURLConnection
+        try {
+            c.connectTimeout = 10000
+            c.readTimeout = 120000
+            c.setRequestProperty("Authorization", "Bearer " + Store.token)
+            if (c.responseCode != 200) throw java.io.IOException("HTTP ${c.responseCode}")
+            c.inputStream.use { inp -> to.outputStream().use { inp.copyTo(it) } }
+        } finally {
+            c.disconnect()
+        }
+    }
 
     fun hasPendingTimer() = synchronized(lock) { "timer" in pending }
 

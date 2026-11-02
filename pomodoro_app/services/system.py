@@ -16,7 +16,7 @@ def run(*cmd):
 
 def notify(title, body="", urgent=False):
     if shutil.which("notify-send"):
-        subprocess.Popen(["notify-send", "-a", "Pomodoro", *(["-u", "critical"] if urgent else []), title, body])
+        subprocess.Popen(["notify-send", "-a", "Faro", *(["-u", "critical"] if urgent else []), title, body])
 
 
 def play_sound():

@@ -19,7 +19,11 @@ SYNC_KEYS = ("work_min", "short_min", "long_min", "cycles", "warn_sec", "auto_st
              "long_lock_last_min", "autostart", "overtime_mode", "reminders", "activities", "schedule", "grid_hours",
              "phone_break_end", "phone_lock_delay_sec", "phone_read_sec", "phone_work_guard",
              "phone_work_warn_min", "phone_work_lock_min", "phone_dnd", "phone_distract", "phone_distracting",
-             "phone_essential", "focus_sensor")
+             "phone_essential", "focus_sensor", "skip_friction", "phone_skips_per_day",
+             # Faro (los usa sobre todo el teléfono; si no viajan, la compu los borraría al reenviar la config)
+             "mind_on_unlock", "mind_unlock_every_min", "mind_show_sec", "mind_on_break", "phone_break_lock",
+             "break_allow", "wa_guard", "wa_budget_min", "wa_groups_ok", "wa_groups_allowed", "tasks_firm",
+             "tasks_allday_hour", "auto_update", "phone_app_categories")
 ALIVE_SEC = 120  # un dispositivo cuenta como "vivo" si habló con el servidor hace menos de esto
 SOURCE = "desktop"
 
@@ -48,6 +52,11 @@ class Sync:
         self.last_heartbeat = 0
         self.online = False
         self.started = time.time()
+        # Faro: frases, tareas de TickTick y preguntas (llegan aparte del long-poll, ver server/app.py).
+        self.mind = {}
+        self.tasks = {}
+        self.revs = {}
+        self.raw_n = 0
         if self.settings:
             threading.Thread(target=self._poll_loop, daemon=True).start()
             threading.Thread(target=self._send_loop, daemon=True).start()
@@ -88,12 +97,39 @@ class Sync:
                     self.lock.wait()
                 kind, body = next(iter(self.pending.items()))
             try:
-                self._req("PUT" if kind in ("config", "timer") else "POST", f"/api/{kind}", body)
+                if kind.startswith("raw#"):
+                    self._req(body["method"], body["path"], body["body"])
+                else:
+                    self._req("PUT" if kind in ("config", "timer") else "POST", f"/api/{kind}", body)
                 with self.lock:
                     if self.pending.get(kind) is body:   # no llegó otra versión mientras enviábamos
                         del self.pending[kind]
+            except urllib.error.HTTPError as e:
+                if kind.startswith("raw#") and 400 <= e.code < 500:   # no se arregla reintentando
+                    with self.lock:
+                        self.pending.pop(kind, None)
+                else:
+                    time.sleep(15)
             except (OSError, ValueError, urllib.error.URLError):
                 time.sleep(15)
+
+    def send(self, method, path, body):
+        """Una petición cualquiera al hub (diario, respuestas, tareas…), encolada con reintentos."""
+        if not self.enabled:
+            return
+        self.raw_n += 1
+        self._queue(f"raw#{self.raw_n}", {"method": method, "path": path, "body": body})
+
+    def _fetch(self, key, path, field=None):
+        """Pide al hub algo pesado que cambió (en un hilo aparte)."""
+        def run():
+            try:
+                data = self._req("GET", path)
+            except (OSError, ValueError, urllib.error.URLError):
+                self.revs.pop(key, None)
+                return
+            self.app.after(0, lambda: setattr(self, key, data.get(field) if field else data))
+        threading.Thread(target=run, daemon=True).start()
 
     def _queue(self, kind, body):
         with self.lock:
@@ -155,11 +191,26 @@ class Sync:
             else:
                 self.sent_timer = None   # aquí no aplica: que el teléfono vea el estado real de la compu
         self.timer_rev_seen = st.get("timer_rev", 0)
+        for key, path, field in (("mind", "/api/mind", "mind"), ("tasks", "/api/tasks", None)):
+            rev = st.get(key + "_rev", 0)
+            if rev and self.revs.get(key) != rev:
+                self.revs[key] = rev
+                self._fetch(key, path, field)
         if changed:
             save_config(cfg)
         self.app.render()
 
     # ---------- consultas ----------
+    def asks(self):
+        """Preguntas pendientes para la compu."""
+        now = time.time()
+        return [a for a in (self.remote or {}).get("asks") or []
+                if a.get("answer") is None and a.get("expires", 0) > now and a.get("not_before", 0) <= now
+                and "desktop" in (a.get("devices") or ["desktop"])]
+
+    def current_task(self):
+        return (self.remote or {}).get("current_task")
+
     def device_alive(self, name):
         dev = ((self.remote or {}).get("devices") or {}).get(name)
         if not dev or not self.online:
