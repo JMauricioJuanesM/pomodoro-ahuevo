@@ -61,11 +61,29 @@ object Updater {
         maybeInstall(ctx)
     }
 
-    /** Cada tanto (desde [PomodoroService]): si hay pendiente y es buen momento, instala. */
-    fun maybeInstall(ctx: Context) {
+    /** ¿Hay una versión nueva esperando? (para el botón «Instalar ahora» de Ajustes) */
+    fun hasPending() = pending != null
+
+    /**
+     * ¿Android la deja instalar sin preguntar? Solo si esta app es su propia instaladora (después de la
+     * primera actualización hecha por ella misma; las instaladas por ADB no cuentan).
+     */
+    private fun silent(ctx: Context): Boolean = Build.VERSION.SDK_INT >= 31 && runCatching {
+        ctx.packageManager.getInstallSourceInfo(ctx.packageName).installingPackageName == ctx.packageName
+    }.getOrDefault(false)
+
+    /**
+     * Cada tanto (desde [PomodoroService]): si hay pendiente y es buen momento, instala. Sin diálogo, ya (son
+     * unos segundos); con diálogo, con la pantalla prendida y fuera de un pomodoro (en el descanso sí, aunque
+     * esté el telón). `now` (el botón de Ajustes) no espera.
+     */
+    fun maybeInstall(ctx: Context, now: Boolean = false) {
         val rel = pending ?: return
-        if (busy || Engine.working() || Curtain.visible != null) return
-        if (!ctx.getSystemService(PowerManager::class.java).isInteractive) return
+        if (busy) return
+        if (!now && !silent(ctx)) {
+            if (Engine.working() || Curtain.visible !in setOf(null, "break", "mind")) return
+            if (!ctx.getSystemService(PowerManager::class.java).isInteractive) return
+        }
         if (!ctx.packageManager.canRequestPackageInstalls()) {
             status = "Falta el permiso para instalar (la compu lo da por ADB)"
             return

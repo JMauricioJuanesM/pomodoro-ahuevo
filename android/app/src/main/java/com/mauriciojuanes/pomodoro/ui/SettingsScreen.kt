@@ -133,6 +133,12 @@ fun SettingsScreen(openApps: () -> Unit, openSub: (String) -> Unit) {
                 SwitchRow("Actualizarse sola", Updater.status.ifEmpty { "Versión ${Updater.installedName(ctx)}" }, cBool("auto_update", true)) {
                     setCfg("auto_update", it)
                 }
+                if (Updater.hasPending()) {
+                    RowDivider()
+                    SettingRow("⬇️ Instalar ahora", "No esperar al descanso", onClick = { Updater.maybeInstall(ctx, now = true) }) {
+                        Icon(Icons.Filled.KeyboardArrowRight, null, tint = Muted)
+                    }
+                }
             }
 
             Section("WhatsApp en el trabajo", footer = "Los estados, canales y comunidades siempre distraen. En actividades de chat (p. ej. «💬») no hay tope.") {
