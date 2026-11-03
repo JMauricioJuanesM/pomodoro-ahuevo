@@ -181,6 +181,21 @@ fun TimerScreen(missingPerms: Int, openSettings: () -> Unit) {
 
 private const val SKIP_PHRASE = "Es necesario de verdad, no estoy evitando el trabajo"
 private const val SKIP_MIN_REASON = 40
+private const val VOWELS = "aeiouáéíóúüy"
+private val WORD = Regex("\\p{L}+")
+private val STUTTER = Regex("(.{1,3})\\1\\1")
+
+/**
+ * ¿Tecleo al azar («hehdjdgshshs…»)? Menos de 5 palabras distintas con vocales y sin sílabas repetidas, pocas
+ * vocales o mucho texto que no son palabras. Mismo criterio que `core/reason.py` en la compu.
+ */
+private fun nonsense(reason: String): Boolean {
+    val words = WORD.findAll(reason.lowercase()).map { it.value }.toList()
+    val real = words.filter { w -> w.any { it in VOWELS } && w.length <= 20 && !STUTTER.containsMatchIn(w) }
+    val letters = words.sumOf { it.length }
+    val vowels = words.sumOf { w -> w.count { it in VOWELS } }
+    return real.toSet().size < 5 || vowels < 0.3 * letters || real.sumOf { it.length } < 0.8 * letters
+}
 
 /**
  * Saltarse el pomodoro en horario de trabajo: razón de al menos [SKIP_MIN_REASON] letras, la frase
@@ -205,7 +220,8 @@ private fun SkipDialog(action: String, onDismiss: () -> Unit) {
         else -> "irte a descanso"
     }
     val n = reason.trim().length
-    val ok = left > 0 && secs == 0 && n >= SKIP_MIN_REASON && phrase.trim().equals(SKIP_PHRASE, ignoreCase = true)
+    val junk = n >= SKIP_MIN_REASON && nonsense(reason)
+    val ok = left > 0 && secs == 0 && n >= SKIP_MIN_REASON && !junk && phrase.trim().equals(SKIP_PHRASE, ignoreCase = true)
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("¿De verdad vas a $what?") },
@@ -217,7 +233,8 @@ private fun SkipDialog(action: String, onDismiss: () -> Unit) {
                     Text("Es horario de trabajo. Te quedan $left hoy y tu bot se va a enterar con tu razón.")
                     OutlinedTextField(reason, { reason = it }, label = { Text("¿Por qué es absolutamente necesario?") },
                         minLines = 2, modifier = Modifier.fillMaxWidth(),
-                        supportingText = { Text("$n/$SKIP_MIN_REASON") })
+                        isError = junk,
+                        supportingText = { Text(if (junk) "Eso no parece una razón: escríbela con palabras de verdad" else "$n/$SKIP_MIN_REASON") })
                     Text("Escribe: «$SKIP_PHRASE»", color = Muted, fontSize = 13.sp)
                     OutlinedTextField(phrase, { phrase = it }, singleLine = false, modifier = Modifier.fillMaxWidth())
                 }

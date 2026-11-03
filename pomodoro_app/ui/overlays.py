@@ -3,6 +3,7 @@ import datetime as dt
 import time
 import tkinter as tk
 
+from ..core.reason import nonsense
 from ..core.schedule import act_label, next_change
 from ..core.timefmt import fmt, fmt_hm
 from ..services.system import lock_session, monitors
@@ -401,6 +402,8 @@ class SkipScreen(Overlay):
             return
         if len(reason) < self.MIN_REASON:
             self.status.config(text=f"La razón es muy corta ({len(reason)}/{self.MIN_REASON}).")
+        elif nonsense(reason):
+            self.status.config(text="Eso no parece una razón: escríbela con palabras de verdad.")
         elif self.phrase.get().strip().lower() != self.PHRASE.lower():
             self.status.config(text="La frase no coincide.")
         else:

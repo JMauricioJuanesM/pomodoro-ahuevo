@@ -20,7 +20,7 @@ pasa y lo que le dices. Por dentro los paquetes conservan el nombre viejo (`pomo
 | **Preguntas** | El sistema te pregunta (qué mejorarías, cómo vas…) en pantalla completa: en el descanso o fuera del trabajo, nunca a media racha de trabajo. Cada día a media tarde, si nadie preguntó nada, pregunta por sugerencias. Las respuestas van al diario. |
 | **Telegram sin ruido** | Lo proactivo del bot llega en una línea con enlace al buzón (el texto completo vive en la app); nada durante un pomodoro (se junta en un resumen para el descanso) y como mucho un mensaje cada 45 min. Los enlaces `https://pomodoro.mauriciojuanes.com/app#…` abren la app del teléfono. |
 | **Ciclo nocturno** (`server/nightly/`, en el VPS) | 01:30 `reflect`: Claude lee 14 días (diario, alertas, estadísticas, reacciones, respuestas, tareas pospuestas) y reescribe frases, políticas por actividad y categorías de apps, deja preguntas para mañana y un reporte en el buzón. 02:15 `improve.sh`: Claude Code hace 1-2 mejoras de código pequeñas en la rama `auto` (nunca en lo que protege contra recaídas), y solo si pasan las pruebas se compila y publica la app. Cada 15 min `watch`: si la versión nueva falla sus pruebas en el teléfono, republica la anterior. |
-| **Actualizaciones sin la compu** | El VPS compila y publica el APK (`/api/release`, `/api/apk`); el teléfono lo descarga, revisa su huella y se lo instala (la accesibilidad acepta el diálogo), fuera de los pomodoros. Al arrancar corre sus **pruebas automáticas** (`SelfTest`) y las reporta. Con el teléfono conectado por ADB, la compu lo instala ella misma. Al prender la compu (`services/faro_sync.py`) sube tu código al VPS y trae las mejoras nocturnas si tu copia está limpia. |
+| **Actualizaciones sin la compu** | El VPS compila y publica el APK (`/api/release`, `/api/apk`); el teléfono lo descarga, revisa su huella y se lo instala (la accesibilidad acepta el diálogo), fuera de los pomodoros. Si falla, espera 10 min y luego 20; a la tercera falla seguida (aunque sean versiones distintas) lo deja para el día siguiente y te avisa para instalarla desde *Ajustes → Instalar ahora*; si MIUI responde «Permission denied», desde entonces instala con su diálogo. Al arrancar corre sus **pruebas automáticas** (`SelfTest`) y las reporta. Con el teléfono conectado por ADB, la compu lo instala ella misma. Al prender la compu (`services/faro_sync.py`) sube tu código al VPS y trae las mejoras nocturnas si tu copia está limpia. |
 
 Todo esto se configura en *Ajustes → Faro* del teléfono (o en `config.json`) y viaja entre compu y teléfono.
 
@@ -70,7 +70,8 @@ y viajan al servidor con la señal de vida (`devices.desktop.info.focus`) para e
 
 En horario de trabajo (no en horas extra), **descanso ya**, **reiniciar** y **pausar** (en la compu, solo
 sin el sensor: con él, pausar únicamente deja el pomodoro esperándote) no son de un toque: piden una razón
-de al menos 40 letras, escribir a mano «Es necesario de verdad, no estoy evitando el trabajo» y esperar
+de al menos 40 letras que diga algo (el tecleo al azar como «hehdjdgshshs…», sin vocales o sin al menos 5
+palabras distintas, no pasa; `core/reason.py`), escribir a mano «Es necesario de verdad, no estoy evitando el trabajo» y esperar
 45 s, 90 s, 180 s… según cuántas veces llevas hoy. Hay tope diario (`skips_per_day` en la compu,
 `phone_skips_per_day` en el teléfono, 2 cada uno) y el bot se entera con tu razón. En el teléfono las
 acciones de la notificación desaparecen en horario de trabajo. Se apaga con `skip_friction: false`.
