@@ -130,8 +130,17 @@ object Updater {
     fun fail(ctx: Context, code: Long, why: String) {
         busy = false
         status = "No se pudo actualizar: $why"
+        // MIUI niega la instalación sin diálogo («INSTALL_FAILED_ABORTED: Permission denied»): desde ahora con
+        // diálogo (pantalla prendida, la accesibilidad lo acepta). Va antes de lo de «abortada»: con ese mensaje
+        // el aviso dice ABORTED, y si se ignoraba, se reintentaba sin diálogo para siempre (23 veces, 2–3 nov).
+        val denied = "permission denied" in why.lowercase()
+        if (denied && Store.long("update_needs_dialog") == 0L) {
+            Store.setLong("update_needs_dialog", 1)
+            Sync.alert("update_failed", ctx.packageName, "Faro $code", "update", "sin diálogo no se puede: ahora con diálogo")
+            return   // se reintenta ya, con diálogo, sin contarlo como fallo
+        }
         // Abortada (p. ej. se apagó la pantalla con el diálogo abierto): se reintenta sin contarla.
-        if ("ABORTED" in why) return
+        if ("ABORTED" in why && !denied) return
         // Fallos seguidos desde la versión instalada, aunque sean de versiones publicadas distintas (el 2-nov fueron 22
         // de la 15 a la 21): se espera 10 min, luego 20, y a la tercera un día, con aviso para instalarla a mano.
         val n = fails(ctx) + 1
@@ -139,8 +148,6 @@ object Updater {
         Store.setLong("update_fails", n)
         val wait = if (n >= MAX_FAILS) 86_400_000L else BACKOFF_MS shl (n - 1).toInt()
         Store.setLong("update_retry_at", System.currentTimeMillis() + wait)
-        // MIUI niega la instalación sin diálogo: desde ahora con diálogo (pantalla prendida, la accesibilidad lo acepta).
-        if ("permission denied" in why.lowercase()) Store.setLong("update_needs_dialog", 1)
         Sync.alert("update_failed", ctx.packageName, "Faro $code", "update", why.take(200))
         if (n >= MAX_FAILS) Notifier.alert(ctx, "Faro no pudo actualizarse sola",
             "Falló $n veces seguidas (${why.take(80)}). Lo vuelve a intentar mañana; o ve a Ajustes → Instalar ahora.", vibrate = false)

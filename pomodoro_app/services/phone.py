@@ -261,6 +261,11 @@ class Phone:
         if self.app_installed and sync and sync.phone_app_info() and not sync.phone_app_info().get("install_ok"):
             # Que la app se actualice sola desde el hub (Updater.kt), aunque la compu esté apagada.
             self.adb("shell", "appops", "set", APP_PKG, "REQUEST_INSTALL_PACKAGES", "allow")
+        if self.app_installed and sync and sync.phone_app_info().get("bg_start") is False:
+            # MIUI: «ventanas emergentes en segundo plano» (op 10021) y «mostrar en pantalla de bloqueo» (10020).
+            # Sin ellas no sale el telón (frases, descanso, preguntas) ni el diálogo para actualizar (BgStart.kt).
+            for op in ("10021", "10020"):
+                self.adb("shell", "appops", "set", APP_PKG, op, "allow")
         if self.app_installed:
             self.update_app()
         if not self.app_installed or self.app_handles():
@@ -306,6 +311,8 @@ class Phone:
             return
         out = self.adb("install", "-r", path, timeout=180)
         if "Success" in out:
+            for op in ("10021", "10020"):   # por si MIUI los reinicia al reinstalar
+                self.adb("shell", "appops", "set", APP_PKG, op, "allow")
             notify("📱 Faro se actualizó en el teléfono", f"Versión {rel.get('version_name', want)}")
 
     # ---------- acciones que usa la app ----------

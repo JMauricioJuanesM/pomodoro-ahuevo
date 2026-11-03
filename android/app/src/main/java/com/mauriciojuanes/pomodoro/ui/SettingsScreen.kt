@@ -92,7 +92,11 @@ fun permissions(ctx: Context): List<Perm> {
         Perm("Batería sin restricciones", "Que Android no la cierre", pm.isIgnoringBatteryOptimizations(pkg)) {
             it.startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:$pkg")))
         },
-    )
+    ) + listOfNotNull(com.mauriciojuanes.pomodoro.BgStart.allowed(ctx)?.let { ok ->
+        Perm("Ventanas en segundo plano", "Otros permisos → «Mostrar ventanas emergentes en segundo plano». Sin esto no salen las frases ni se instalan las versiones nuevas", ok) {
+            it.startActivity(com.mauriciojuanes.pomodoro.BgStart.settingsIntent(it))
+        }
+    })
 }
 
 @Composable

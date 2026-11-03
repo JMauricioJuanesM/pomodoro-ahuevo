@@ -124,7 +124,8 @@ class PomodoroService : Service() {
                 .put("wa_mode", WhatsApp.current() + if (WhatsApp.chatTitle().isNotEmpty()) "+titulo" else "")
                 .put("activity", Policy.at().let { "${it.label}${if (it.phone) "" else " (sin vigilar el teléfono)"}" })
                 .put("update", Updater.status)
-                .put("install_ok", packageManager.canRequestPackageInstalls()))
+                .put("install_ok", packageManager.canRequestPackageInstalls())
+                .put("bg_start", BgStart.allowed(this) ?: true))
         }
     }
 
