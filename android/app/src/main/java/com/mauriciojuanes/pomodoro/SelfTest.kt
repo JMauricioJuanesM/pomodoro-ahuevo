@@ -34,7 +34,9 @@ object SelfTest {
             Policy.at()
             Apps.category(ctx, ctx.packageName) == Apps.ESSENTIAL && Mind.pick() != null
         }.getOrDefault(false)
-        val ok = CRITICAL.all { checks[it] == true }
+        // Simulacro (build.sh con FARO_TEST_FAIL=1): esta versión dice que falló para probar el rollback de verdad.
+        if (Store.long("selftest_fail_code") == Updater.installedCode(ctx)) checks["simulacro"] = false
+        val ok = CRITICAL.all { checks[it] == true } && checks["simulacro"] != false
         return JSONObject().put("source", "phone").put("version", Updater.installedName(ctx))
             .put("code", Updater.installedCode(ctx)).put("ok", ok).put("checks", JSONObject(checks as Map<*, *>))
     }

@@ -557,7 +557,7 @@ async def create_task(request: Request):
 async def put_release(request: Request):
     """Lo llama el compilador del VPS al dejar un APK nuevo en data/apk/ (ya probado)."""
     body = await request.json()
-    rel = {k: body.get(k) for k in ("version_code", "version_name", "sha256", "notes", "commit")}
+    rel = {k: body.get(k) for k in ("version_code", "version_name", "sha256", "notes", "commit", "test_fail")}
     rel["ts"] = time.time()
     rel["previous"] = {k: v for k, v in (state["release"] or {}).items() if k != "previous"} or None
     state["release"] = rel

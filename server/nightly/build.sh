@@ -31,9 +31,11 @@ FARO_VERSION_CODE=$CODE JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64 nice /opt/g
 APK=app/build/outputs/apk/debug/app-debug.apk
 cp "$APK" "$APKDIR/Faro.apk.new" && mv "$APKDIR/Faro.apk.new" "$APKDIR/Faro.apk"
 SHA=$(sha256sum "$APKDIR/Faro.apk" | cut -d' ' -f1)
-python3 - "$CODE" "$SHA" "$COMMIT" "$NOTES" <<'PY' | curl -s -X PUT -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" -d @- "$HUB/api/release"
+python3 - "$CODE" "$SHA" "$COMMIT" "$NOTES" "${FARO_TEST_FAIL:-}" <<'PY' | curl -s -X PUT -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" -d @- "$HUB/api/release"
 import json, sys
-code, sha, commit, notes = sys.argv[1:]
-print(json.dumps({"version_code": int(code), "version_name": f"3.0.{code}", "sha256": sha, "commit": commit, "notes": notes}))
+code, sha, commit, notes, test_fail = sys.argv[1:]
+# FARO_TEST_FAIL=1: simulacro de rollback (el teléfono reporta esta versión como fallida; ver SelfTest.kt).
+print(json.dumps({"version_code": int(code), "version_name": f"3.0.{code}", "sha256": sha, "commit": commit,
+                  "notes": notes, "test_fail": bool(test_fail)}))
 PY
 echo "publicada 3.0.$CODE ($COMMIT)"

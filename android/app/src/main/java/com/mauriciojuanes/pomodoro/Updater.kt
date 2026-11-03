@@ -51,6 +51,8 @@ object Updater {
     /** Llegó la versión publicada (desde [Hub.onRemote]). */
     fun onRelease(ctx: Context, rel: JSONObject) {
         val code = rel.optLong("version_code")
+        // Simulacro de rollback: esa versión reporta sus pruebas como fallidas (ver [SelfTest]).
+        Store.setLong("selftest_fail_code", if (rel.optBoolean("test_fail")) code else 0)
         if (code <= installedCode(ctx) || !Engine.cfg.optBoolean("auto_update", true)) {
             pending = null
             return
