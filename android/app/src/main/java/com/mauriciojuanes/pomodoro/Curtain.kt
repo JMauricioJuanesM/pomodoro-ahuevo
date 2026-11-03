@@ -29,8 +29,10 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.OutlinedTextField
@@ -55,6 +57,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.mauriciojuanes.pomodoro.ui.Card2
 import com.mauriciojuanes.pomodoro.ui.Muted
 import com.mauriciojuanes.pomodoro.ui.Ok
 import com.mauriciojuanes.pomodoro.ui.PomodoroTheme
@@ -71,7 +74,7 @@ import org.json.JSONObject
  *  - `mind`: una frase animada al desbloquear (ver [Mind]), con 👍/👎 para que el ciclo nocturno aprenda;
  *  - `ask`: una pregunta del sistema (p. ej. qué mejorarías); se puede dejar para luego dos veces;
  *  - `task`: una tarea de TickTick que ya venció (ver [Tasks]);
- *  - `sos`: tengo una urgencia: respiración guiada y luego «¿la venciste?».
+ *  - `sos`: tengo una urgencia: respiración guiada y luego «¿la venciste?», con dónde, con quién y alcohol.
  *
  * La abre [Curtain.show] desde el servicio o la accesibilidad (una app con accesibilidad activa puede abrir
  * pantallas desde segundo plano).
@@ -306,10 +309,31 @@ class CurtainActivity : ComponentActivity() {
         }
     }
 
+    /** Una pregunta de un toque (opcional): resalta la opción escogida; tocarla otra vez la quita. */
+    @Composable
+    private fun Choice(label: String, options: List<Pair<String, String>>, chosen: String?, pick: (String?) -> Unit) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(label, fontSize = 14.sp, color = Muted)
+            Row(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                options.forEach { (shown, value) ->
+                    Text(shown, fontSize = 15.sp, color = TextMain, modifier = Modifier.clip(RoundedCornerShape(12.dp))
+                        .background(if (value == chosen) Ok.copy(alpha = 0.6f) else Card2)
+                        .clickable { pick(if (value == chosen) null else value) }.padding(horizontal = 12.dp, vertical = 8.dp))
+                }
+            }
+        }
+    }
+
     @Composable
     private fun SosCurtain() {
         var secs by remember { mutableIntStateOf(0) }
         val logged = remember { mutableStateOf(false) }
+        // Contexto de la urgencia (la hora ya va en la entrada): llega al diario como «disparador» para la IA.
+        var place by remember { mutableStateOf<String?>(null) }
+        var company by remember { mutableStateOf<String?>(null) }
+        var alcohol by remember { mutableStateOf<String?>(null) }
+        fun situation() = listOfNotNull(place, company, alcohol).joinToString(" · ").ifEmpty { null }
+        fun withContext(text: String) = situation()?.let { "$text ($it)" } ?: text
         LaunchedEffect(Unit) {
             if (!logged.value) {
                 logged.value = true
@@ -322,7 +346,8 @@ class CurtainActivity : ComponentActivity() {
         }
         val phase = listOf("Inhala", "Sostén", "Exhala", "Sostén")[(secs / 4) % 4]
         Backdrop(Color(0xFF0F2A2A)) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(Modifier.verticalScroll(rememberScrollState()), horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Big("La ola sube, llega al pico y baja.", 26)
                 Small("Respira conmigo. Levántate, sal del cuarto, toma agua fría. No estás solo en esto.")
                 Box(Modifier.padding(24.dp), contentAlignment = Alignment.Center) {
@@ -331,13 +356,19 @@ class CurtainActivity : ComponentActivity() {
                 }
                 if (secs < 120) Small("${(120 - secs) / 60}:${"%02d".format((120 - secs) % 60)}")
                 else {
+                    Choice("¿Dónde estás?", listOf("🛏️ Cuarto" to "en el cuarto", "🏠 Casa" to "en casa",
+                        "🚶 Fuera" to "fuera de casa"), place) { place = it }
+                    Choice("¿Con alguien?", listOf("🙋 Solo" to "solo", "👥 Acompañado" to "acompañado"), company) { company = it }
+                    Choice("¿Tomaste alcohol?", listOf("🍺 Sí" to "con alcohol", "🚫 No" to "sin alcohol"), alcohol) { alcohol = it }
+                    // Las recaídas se han dado estando solo: que el siguiente paso sea hablar con alguien.
+                    if (company == "solo") Action("📞 Llamar a alguien") { open(Intent(Intent.ACTION_DIAL)) }
                     Action("💪 La vencí", Ok.copy(alpha = 0.85f)) {
-                        Hub.journal("victoria", "Vencí la urgencia con la respiración guiada")
+                        Hub.journal("victoria", withContext("Vencí la urgencia con la respiración guiada"), trigger = situation())
                         finish()
                     }
                     Action("Sigo con ganas: otra ronda") { secs = 0 }
                     TextButton({
-                        Hub.journal("recaida", "Registrada después del SOS")
+                        Hub.journal("recaida", withContext("Registrada después del SOS"), trigger = situation())
                         finish()
                     }) { Text("Recaí (registrarlo sin juzgarme)", color = Muted) }
                 }
