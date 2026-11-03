@@ -338,8 +338,9 @@ private fun ActivityDialog(id: String?, onDismiss: () -> Unit) {
                 }
                 if (Sched.isWork(kind)) {
                     VSpace(14)
-                    OutlinedTextField(intent, { intent = it }, label = { Text("¿Qué haces aquí? (para la IA)") },
-                        placeholder = { Text("p. ej. pagos y trámites del banco") }, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(intent, { intent = it }, label = { Text("Descripción para la IA") },
+                        placeholder = { Text("Qué haces en este bloque, p. ej. revisar la moto, limpiar, trámites") },
+                        minLines = 2, modifier = Modifier.fillMaxWidth())
                     VSpace(10)
                     val auto = allow == null
                     val shown = allow ?: Policy.allowFor(id, JSONObject().put("label", label).put("intent", intent)).first

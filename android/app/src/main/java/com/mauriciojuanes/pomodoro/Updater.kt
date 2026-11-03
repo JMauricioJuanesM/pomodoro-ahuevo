@@ -21,8 +21,8 @@ import java.util.concurrent.Executors
  * cuanto el teléfono se entera lo descarga, revisa su huella y lo instala. No hace falta la compu.
  *
  * Android pide confirmar las instalaciones de apps que no vienen de la tienda; la accesibilidad pulsa
- * «Actualizar» como en [Strikes]. Para no cortarte nada, espera a que no estés en un pomodoro y tengas la
- * pantalla prendida. Tras instalarse, [SelfTest] corre las pruebas y las reporta: si fallan, el ciclo
+ * «Actualizar» como en [Strikes]. Con diálogo espera a que tengas la pantalla prendida (aunque estés en un
+ * pomodoro: el conteo sigue donde iba, ver [Engine]). Tras instalarse, [SelfTest] corre las pruebas y las reporta: si fallan, el ciclo
  * nocturno se entera y publica la versión anterior con un número mayor.
  *
  * Necesita «instalar apps desconocidas» para esta app; la compu lo da por ADB
@@ -77,15 +77,15 @@ object Updater {
 
     /**
      * Cada tanto (desde [PomodoroService]): si hay pendiente y es buen momento, instala. Sin diálogo, ya (son
-     * unos segundos); con diálogo, con la pantalla prendida y fuera de un pomodoro (en el descanso sí, aunque
-     * esté el telón). Tras un fallo espera (ver [fail]). `now` (el botón de Ajustes) no espera.
+     * unos segundos); con diálogo, con la pantalla prendida (también en un pomodoro o en el descanso con el telón). Tras un fallo espera (ver [fail]). `now` (el botón de Ajustes) no espera.
      */
     fun maybeInstall(ctx: Context, now: Boolean = false) {
         val rel = pending ?: return
         if (busy) return
         if (!now && fails(ctx) > 0 && System.currentTimeMillis() < Store.long("update_retry_at")) return
         if (!now && !silent(ctx)) {
-            if (Engine.working() || Curtain.visible !in setOf(null, "break", "mind")) return
+            // También a media pomodoro: el temporizador guarda su hora de fin y al reabrir retoma lo del hub.
+            if (Curtain.visible !in setOf(null, "break", "mind")) return
             if (!ctx.getSystemService(PowerManager::class.java).isInteractive) return
         }
         if (!ctx.packageManager.canRequestPackageInstalls()) {

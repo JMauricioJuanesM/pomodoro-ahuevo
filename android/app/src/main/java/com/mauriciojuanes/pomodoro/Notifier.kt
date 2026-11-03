@@ -35,7 +35,9 @@ object Notifier {
         Intent(ctx, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
         PendingIntent.FLAG_IMMUTABLE)
 
-    fun alert(ctx: Context, title: String, text: String, vibrate: Boolean = true, open: PendingIntent? = null) {
+    /** `fullScreen`: además abre esa pantalla a pantalla completa (prende la pantalla y sale sobre el bloqueo). */
+    fun alert(ctx: Context, title: String, text: String, vibrate: Boolean = true, open: PendingIntent? = null,
+              fullScreen: Boolean = false) {
         val nm = ctx.getSystemService(NotificationManager::class.java)
         // En "No molestar" puesto por nosotros no sonaría: lo quitamos un momento para avisar.
         val dnd = Store.dndByUs && nm.isNotificationPolicyAccessGranted
@@ -48,6 +50,7 @@ object Notifier {
             .setContentIntent(open ?: openApp(ctx))
             .setAutoCancel(true)
             .setTimeoutAfter(10 * 60 * 1000L)
+            .apply { if (fullScreen && open != null) setFullScreenIntent(open, true).setCategory(Notification.CATEGORY_ALARM) }
             .build()
         nm.notify(nextId++, n)
         if (vibrate) vibrate(ctx)

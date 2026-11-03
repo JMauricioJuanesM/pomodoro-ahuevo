@@ -49,7 +49,7 @@ class Phone:
         self.distract_pkg = None      # app que distrae sobre la que ya se avisó
         self.dnd_by_us = False
         self.app_installed = None     # ¿está instalada la app del teléfono? (se revisa cada tanto)
-        self.update_tried = 0         # versión que ya intentamos instalar por ADB
+        self.update_tried = {}        # versión → cuándo la intentamos instalar por ADB
         self.last_app_check = 0
         threading.Thread(target=self._loop, daemon=True).start()
 
@@ -264,7 +264,7 @@ class Phone:
         if self.app_installed and sync and sync.phone_app_info().get("bg_start") is False:
             # MIUI: «ventanas emergentes en segundo plano» (op 10021) y «mostrar en pantalla de bloqueo» (10020).
             # Sin ellas no sale el telón (frases, descanso, preguntas) ni el diálogo para actualizar (BgStart.kt).
-            for op in ("10021", "10020"):
+            for op in ("10021", "10020", "USE_FULL_SCREEN_INTENT"):
                 self.adb("shell", "appops", "set", APP_PKG, op, "allow")
         if self.app_installed:
             self.update_app()
@@ -295,9 +295,11 @@ class Phone:
         rel = ((sync and sync.remote) or {}).get("release") or {}
         have = (sync.phone_app_info() if sync else {}).get("version_code") or 0
         want = rel.get("version_code") or 0
-        if not want or not have or want <= have or self.update_tried == want:
+        # Una vez por versión no bastaba: si `adb install` fallaba (p. ej. el teléfono se desconectó a media
+        # copia), esa versión ya no se volvía a intentar. Ahora se reintenta cada 30 min.
+        if not want or not have or want <= have or time.time() - self.update_tried.get(want, 0) < 1800:
             return
-        self.update_tried = want
+        self.update_tried[want] = time.time()
         path = os.path.join(CONFIG_DIR, "Faro.apk")
         try:
             req = urllib.request.Request(sync.settings["url"].rstrip("/") + "/api/apk",
@@ -311,7 +313,7 @@ class Phone:
             return
         out = self.adb("install", "-r", path, timeout=180)
         if "Success" in out:
-            for op in ("10021", "10020"):   # por si MIUI los reinicia al reinstalar
+            for op in ("10021", "10020", "USE_FULL_SCREEN_INTENT"):   # por si MIUI los reinicia al reinstalar
                 self.adb("shell", "appops", "set", APP_PKG, op, "allow")
             notify("📱 Faro se actualizó en el teléfono", f"Versión {rel.get('version_name', want)}")
 

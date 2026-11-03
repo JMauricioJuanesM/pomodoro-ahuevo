@@ -12,6 +12,7 @@ El nivel viaja al teléfono dentro del estado del temporizador (`arming`, `nudge
 Sin datos del sensor (ni la extensión ni D-Bus) todo funciona como antes.
 """
 import datetime as dt
+import hashlib
 import time
 
 from ..config import save_config
@@ -61,6 +62,11 @@ class FocusMixin:
         if not a:
             return "trabajo"
         return f"{aid} ({a['label']})" + (f": {a['intent']}" if a.get("intent") else "")
+
+    def desc_tag(self, aid):
+        """Huella corta de la descripción de la actividad (para la memoria de la IA)."""
+        intent = (activity(self.cfg, aid) or {}).get("intent") or ""
+        return "#" + hashlib.sha1(intent.encode()).hexdigest()[:6] if intent else ""
 
     def focus_stats_today(self):
         return self.cfg.setdefault("focus_stats", {}).setdefault(dt.date.today().isoformat(), {})
@@ -168,12 +174,13 @@ class FocusMixin:
             if is_call(app, title):
                 return "work"
             key = self.focus_key = cache_key(aid, app, title)
-            v = self.judge.learned(key) or classify(app, title) or self.judge.known(key)
+            ai_key = key + self.desc_tag(aid)   # lo de la IA se vuelve a juzgar si cambias la descripción
+            v = self.judge.learned(key) or classify(app, title) or self.judge.known(ai_key)
             if v is None:
                 if self.dwell[0] != key:
                     self.dwell = (key, time.time())
                 elif self.cfg["focus_llm"] and self.on_duty() and time.time() - self.dwell[1] >= DWELL_SEC:
-                    self.judge.ask(key, self.act_desc(aid), app, title)
+                    self.judge.ask(ai_key, self.act_desc(aid), app, title)
                 v = "neutral"
         limit = self.cfg["focus_idle_work_min" if v == "work" else "focus_idle_min"] * 60
         if s["idle"] >= limit and time.time() >= self.focus_pass_until:

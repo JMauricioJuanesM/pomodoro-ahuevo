@@ -481,3 +481,46 @@ class TaskScreen(Overlay):
             self.reason.config(bg="#5a1d1d")
             return
         self.app.task_snooze(self.task, mins, reason)
+
+
+class AwayScreen(Overlay):
+    """Volviste a la compu tras un rato fuera sin contestar qué hacías: «¿qué hiciste estos N min?», a
+    pantalla completa. Si fue trabajo, se te devuelve ese rato (ver `controller/offpc.py`)."""
+
+    BG = "#0f1a14"
+
+    def __init__(self, app, away, options):
+        super().__init__(app)
+        self.away, self.options = away, options
+        self.build()
+        self.main.after(300, lambda: self.windows and self.entry.focus_set())
+
+    def fill(self, box, main):
+        self.label(box, f"Estuviste {self.away} lejos de la compu", 30, "#f5b041", True)
+        if not main:
+            return
+        self.label(box, "¿Qué hiciste? Si fue trabajo, te devuelvo ese rato al pomodoro.", 15, "#aaa", pady=(10, 22))
+        for opt in self.options:
+            self.button(box, opt, lambda o=opt: self.answer(o)).pack(fill="x", pady=3)
+        row = tk.Frame(box, bg=self.BG)
+        row.pack(pady=(18, 0))
+        self.entry = tk.Entry(row, width=44, font=("Sans", 12), bg="#222", fg="white", insertbackground="white",
+                              relief="flat")
+        self.entry.pack(side="left", ipady=6)
+        self.entry.bind("<Return>", lambda e: self.answer(self.entry.get()))
+        self.ask_btn = self.button(row, "Cuenta como trabajo", lambda: self.answer(self.entry.get()), bg="#c0392b",
+                                   fg="white")
+        self.ask_btn.pack(side="left", padx=8)
+        self.msg = self.label(box, "", 13, "#e59866", pady=(14, 0))
+
+    def answer(self, text):
+        text = (text or "").strip()
+        if len(text) < 4:
+            self.msg.config(text="Escribe qué hiciste.")
+            return
+        self.msg.config(text="Pensándolo…")
+        self.app.offpc_answer(text, source="desktop", done=lambda ok, m: self.show_result(m))
+
+    def show_result(self, msg):
+        if self.windows:
+            self.msg.config(text=msg)

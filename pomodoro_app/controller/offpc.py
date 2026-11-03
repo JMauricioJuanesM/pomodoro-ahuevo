@@ -47,7 +47,6 @@ class OffpcMixin:
         self.offpc = None
         self.offpc_last = None        # último veredicto {"id", "ok", "msg"}: el teléfono lo avisa
         self.offpc_done_msgs = None   # ids de mensajes del hub ya procesados (None: aún no llega el primero)
-        self.offpc_dialog = None
         self.offpc_streak = 0.0
 
     # ---------- consultas ----------
@@ -177,7 +176,7 @@ class OffpcMixin:
         oid = o["id"]
         cb = lambda r: self._offpc_judged(oid, text, r, source, done)  # noqa: E731
         if self.cfg["focus_llm"]:
-            self.judge.ask_offpc(f"{aid or '-'}|{_norm(text)}", self.act_desc(aid), text, away_min, steps, cb)
+            self.judge.ask_offpc(f"{aid or '-'}{self.desc_tag(aid)}|{_norm(text)}", self.act_desc(aid), text, away_min, steps, cb)
         else:
             cb(None)
         self.render()
@@ -273,8 +272,6 @@ class OffpcMixin:
     def _offpc_verdict(self, ok, msg):
         self.offpc_last = {"id": uuid.uuid4().hex[:8], "ok": ok, "msg": msg}
         notify("🚶 " + ("Cuenta como trabajo" if ok else "Fuera de la compu"), msg, urgent=not ok)
-        if self.offpc_dialog:
-            self.offpc_dialog.show_result(msg)
 
     def _offpc_learn(self, aid, text):
         learned = self.cfg.setdefault("offpc_learned", {}).setdefault(aid or "-", {})
@@ -290,13 +287,13 @@ class OffpcMixin:
                                                 "trigger": "offpc"})
 
     def _offpc_open_dialog(self):
-        if self.offpc_dialog or self.overlay:   # con «¿Arrancamos?» abierta, se contesta ahí
+        from ..ui.overlays import AwayScreen
+        if self.overlay:   # con «¿Arrancamos?» u otra pantalla abierta, se contesta ahí o después
             return
-        from ..ui.offpc import AwayDialog
         o = self.offpc
-        self.offpc_dialog = AwayDialog(self, fmt(o["back"] - o["since"]), o["options"] + [AWAY])
+        self.open_overlay(lambda: AwayScreen(self, fmt(o["back"] - o["since"]), o["options"] + [AWAY]))
 
     def _offpc_close_dialog(self):
-        if self.offpc_dialog:
-            self.offpc_dialog.close()
-            self.offpc_dialog = None
+        from ..ui.overlays import AwayScreen
+        if isinstance(self.overlay, AwayScreen):
+            self.close_overlay()

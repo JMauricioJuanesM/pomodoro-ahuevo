@@ -69,10 +69,11 @@ class ActivityDialog(tk.Toplevel):
         lf.grid(row=r + 1, column=0, columnspan=2, sticky="w")
         for k, text in LOCKS.items():
             ttk.Radiobutton(lf, text=text, value=k, variable=self.lock).pack(side="left", padx=(0, 8))
-        ttk.Label(f, text="¿Qué haces aquí? (la IA decide qué apps y páginas se valen)").grid(
+        ttk.Label(f, text="Descripción para la IA: qué haces en este bloque (decide qué cuenta, en la compu y lejos)").grid(
             row=r + 2, column=0, sticky="w", pady=(12, 0))
-        self.intent = tk.StringVar(value=a.get("intent", ""))
-        ttk.Entry(f, textvariable=self.intent, width=40).grid(row=r + 3, column=0, columnspan=2, sticky="we")
+        self.intent = tk.Text(f, width=46, height=3, wrap="word", font=("Sans", 10))
+        self.intent.insert("1.0", a.get("intent", ""))
+        self.intent.grid(row=r + 3, column=0, columnspan=2, sticky="we")
 
         btns = ttk.Frame(f)
         btns.grid(row=r + 4, column=0, columnspan=2, sticky="we", pady=(16, 0))
@@ -103,8 +104,9 @@ class ActivityDialog(tk.Toplevel):
         # Se conserva lo que no se edita aquí (p. ej. `allow`, las apps permitidas que se escogen en el teléfono).
         act = dict(self.editor.acts.get(self.aid) or {})
         act.update(label=label, color=self.color, kind=self.kind.get(), lock=self.lock.get())
-        if self.intent.get().strip():
-            act["intent"] = self.intent.get().strip()
+        intent = " ".join(self.intent.get("1.0", "end").split())
+        if intent:
+            act["intent"] = intent
         else:
             act.pop("intent", None)
         self.result = ("save", act)

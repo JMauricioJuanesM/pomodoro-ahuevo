@@ -41,10 +41,14 @@ object Offpc {
         if (ask != null && ask.optString("id") != Store.string("offpc_asked")) {
             Store.setString("offpc_asked", ask.optString("id"))
             val on = ctx.getSystemService(PowerManager::class.java).isInteractive
+            val inCall = Curtain.inCall(ctx)
+            // Pantalla completa siempre (salvo en llamada): con la pantalla apagada, la notificación la prende y
+            // abre el telón sobre el bloqueo; con la pantalla prendida, el telón se abre directo.
             Notifier.alert(ctx, "🚶 ${ask.optString("question")}", "Si es trabajo lejos de la compu, cuenta. Toca para contestar.",
                 open = PendingIntent.getActivity(ctx, 7, Intent(ctx, CurtainActivity::class.java).putExtra("mode", "offpc")
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP), PendingIntent.FLAG_IMMUTABLE))
-            if (on && Curtain.visible == null && !Curtain.inCall(ctx)) Curtain.show(ctx, "offpc")
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP), PendingIntent.FLAG_IMMUTABLE),
+                fullScreen = !inCall)
+            if (on && Curtain.visible != "offpc" && !inCall) Curtain.show(ctx, "offpc")
         }
         Engine.timer.offpcLast?.let { runCatching { JSONObject(it) }.getOrNull() }?.let { v ->
             if (v.optString("id") != Store.string("offpc_verdict")) {

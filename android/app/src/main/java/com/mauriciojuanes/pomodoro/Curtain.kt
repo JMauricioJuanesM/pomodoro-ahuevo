@@ -134,6 +134,9 @@ class CurtainActivity : ComponentActivity() {
     private fun read(i: Intent?) {
         mode = i?.getStringExtra("mode") ?: "mind"
         payload = i?.getStringExtra("payload") ?: ""
+        // La pregunta de [Offpc] sale aunque el teléfono esté bloqueado; las demás, no.
+        setShowWhenLocked(mode == "offpc")
+        setTurnScreenOn(mode == "offpc")
     }
 
     private fun open(intent: Intent) = runCatching { startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
@@ -490,6 +493,11 @@ object Curtain {
         if (visible != null || inCall(ctx) || Updater.confirming() || Strikes.busy()) return false
         if (breakLocked()) {
             show(ctx, "break")
+            return true
+        }
+        // «¿Qué estás haciendo?» sin contestar: lo primero al prender el teléfono.
+        if (Offpc.asking() != null) {
+            show(ctx, "offpc")
             return true
         }
         Tasks.dueNow()?.let {
