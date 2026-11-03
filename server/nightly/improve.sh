@@ -68,7 +68,8 @@ if [ -x /opt/faro/venv/bin/pytest ]; then
   (cd server && /opt/faro/venv/bin/pytest -q -p no:cacheprovider) || { echo "fallan las pruebas del hub"; git reset -q --hard; exit 0; }
 fi
 STAT=$(git diff --cached --stat | tail -20)
-git commit -q -m "Mejora nocturna: ${SUMMARY:-cambios pequeños}"
+TITLE=$(printf '%s' "${SUMMARY:-cambios pequeños}" | sed 's/\. .*/./' | cut -c1-90)
+git commit -q -m "Mejora nocturna: $TITLE" -m "$SUMMARY"
 git push -q origin auto
 COMMIT=$(git rev-parse --short HEAD)
 
