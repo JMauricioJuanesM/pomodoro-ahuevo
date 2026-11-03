@@ -74,6 +74,7 @@ import org.json.JSONObject
  *  - `mind`: una frase animada al desbloquear (ver [Mind]), con 👍/👎 para que el ciclo nocturno aprenda;
  *  - `ask`: una pregunta del sistema (p. ej. qué mejorarías); se puede dejar para luego dos veces;
  *  - `task`: una tarea de TickTick que ya venció (ver [Tasks]);
+ *  - `offpc`: te fuiste de la compu en horario de trabajo: ¿qué estás haciendo? (ver [Offpc]);
  *  - `sos`: tengo una urgencia: respiración guiada y luego «¿la venciste?», con dónde, con quién y alcohol.
  *
  * La abre [Curtain.show] desde el servicio o la accesibilidad (una app con accesibilidad activa puede abrir
@@ -108,6 +109,7 @@ class CurtainActivity : ComponentActivity() {
                     "ask" -> AskCurtain(payload)
                     "task" -> TaskCurtain(payload)
                     "sos" -> SosCurtain()
+                    "offpc" -> OffpcCurtain()
                     else -> MindCurtain(payload)
                 }
             }
@@ -305,6 +307,62 @@ class CurtainActivity : ComponentActivity() {
                         TextButton({ snooze(m) }) { Text("⏰ $l", color = Muted, fontSize = 16.sp) }
                     }
                 }
+            }
+        }
+    }
+
+    @Composable
+    private fun OffpcCurtain() {
+        var text by remember { mutableStateOf("") }
+        var sent by remember { mutableStateOf<String?>(null) }
+        val o = Offpc.current()
+        val active = Offpc.active()
+        LaunchedEffect(sent) {
+            if (sent != null) {
+                delay(1800)
+                finish()
+            }
+        }
+        fun send(t: String) {
+            Offpc.answer(t)
+            sent = if (t == Offpc.AWAY) "Va: ese rato es descanso." else "Pensándolo… te aviso en un momento."
+        }
+        Backdrop(Color(0xFF1F2A1A)) {
+            Column(Modifier.verticalScroll(rememberScrollState()), horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                if (sent != null) {
+                    Big(sent!!, 24)
+                    return@Column
+                }
+                if (active != null) {
+                    Small("🚶 Trabajando lejos de la compu")
+                    Big(active.optString("what"), 26)
+                    val left = active.optDouble("until") - Engine.now()
+                    Small("Cuenta como trabajo ${Engine.fmt(left)} más. " + when (active.optString("where")) {
+                        "none" -> "Suelta el teléfono: si lo usas para otra cosa, se acaba."
+                        else -> "En el teléfono, solo lo que necesitas para eso."
+                    })
+                    Box(Modifier.padding(top = 14.dp))
+                    Action(Offpc.DONE, Ok.copy(alpha = 0.85f)) { Offpc.finish(); finish() }
+                    TextButton({ finish() }) { Text("Cerrar", color = Muted) }
+                    return@Column
+                }
+                val asking = o?.optString("state") == "asking"
+                Small(if (asking) "🚶 No te veo en la compu" else "🚶 Trabajo lejos de la compu")
+                Big(if (asking) o!!.optString("question") else "¿Qué vas a hacer lejos de la compu?", 26)
+                Small("Si es trabajo, cuenta. Si es descanso, no pasa nada: dilo.")
+                Box(Modifier.padding(top = 8.dp))
+                val opts = o?.optJSONArray("options")
+                val list = if (opts != null && opts.length() > 0) (0 until opts.length()).map { opts.optString(it) }
+                else listOf("📞 Llamada de trabajo", "🖨️ Imprimir o firmar documentos", "📖 Leer o anotar en papel")
+                list.forEach { Action(it) { send(it) } }
+                OutlinedTextField(text, { text = it }, Modifier.fillMaxWidth(), minLines = 2,
+                    placeholder = { Text("O escribe qué estás haciendo…") })
+                Action("Cuenta como trabajo", Tomato.copy(alpha = if (text.trim().length < 4) 0.4f else 1f)) {
+                    if (text.trim().length >= 4) send(text.trim())
+                }
+                if (asking) Action(Offpc.AWAY, Color(0xFF3A3020)) { send(Offpc.AWAY) }
+                TextButton({ finish() }) { Text("Ahora no", color = Muted) }
             }
         }
     }

@@ -8,6 +8,7 @@ from .config import load_config
 from .constants import COLORS, NAMES
 from .controller.faro import FaroMixin
 from .controller.focus import FocusMixin
+from .controller.offpc import OffpcMixin
 from .controller.reminders import RemindersMixin
 from .controller.timer import TimerMixin
 from .controller.workday import WorkdayMixin
@@ -25,7 +26,7 @@ from .ui.main_window import MainWindowMixin
 from .ui.widget import Widget
 
 
-class Pomodoro(MainWindowMixin, TimerMixin, WorkdayMixin, RemindersMixin, FocusMixin, FaroMixin, tk.Tk):
+class Pomodoro(MainWindowMixin, TimerMixin, WorkdayMixin, RemindersMixin, FocusMixin, OffpcMixin, FaroMixin, tk.Tk):
     def __init__(self, sock, auto=False):
         super().__init__()
         self.title("Faro")
@@ -70,6 +71,7 @@ class Pomodoro(MainWindowMixin, TimerMixin, WorkdayMixin, RemindersMixin, FocusM
         self.presence = Presence()
         self.judge = Judge(self)
         self.init_focus()
+        self.init_offpc()
         self.init_faro()
 
         self._build()

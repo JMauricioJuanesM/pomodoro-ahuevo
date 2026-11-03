@@ -147,6 +147,14 @@ fun TimerScreen(missingPerms: Int, openSettings: () -> Unit) {
                 Tonal("Reiniciar", Modifier.weight(1f), { Icon(Icons.Filled.Refresh, null, Modifier.size(20.dp)) }) { guarded("reset") { Engine.reset() } }
                 Tonal("Descanso ya", Modifier.weight(1f), { Text("☕", fontSize = 16.sp) }) { guarded("break") { Engine.breakNow() } }
             }
+            // Trabajo lejos de la compu: solo tiene sentido con la compu prendida (su sensor es el que pausa).
+            if (Engine.desktopAlive) {
+                val ctx = androidx.compose.ui.platform.LocalContext.current
+                val off = com.mauriciojuanes.pomodoro.Offpc.active()
+                VSpace(10)
+                Tonal(if (off != null) "Fuera: ${off.optString("what")}" else "Trabajo lejos de la compu", Modifier.fillMaxWidth(),
+                    { Text("🚶", fontSize = 16.sp) }) { com.mauriciojuanes.pomodoro.Curtain.show(ctx, "offpc") }
+            }
         } else if (t.skippable) {
             Tonal("Saltar descanso", Modifier.fillMaxWidth(), { Icon(SkipIcon, null, Modifier.size(20.dp)) }) { Engine.skip() }
         } else {

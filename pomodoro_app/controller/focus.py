@@ -23,7 +23,6 @@ from ..ui.overlays import NudgeScreen
 
 PRESENT_SEC = 30    # tocaste el teclado o el mouse hace menos de esto: estás en la compu
 DWELL_SEC = 10      # segundos viendo algo dudoso antes de preguntarle a la IA
-PASSES_PER_DAY = 4  # veces al día que puedes decir «estoy trabajando lejos de la compu»
 STATS_DAYS = 60
 
 
@@ -135,10 +134,12 @@ class FocusMixin:
         if (s is None or self.phase != "work" or self.shutdown_at
                 or (self.overlay and not isinstance(self.overlay, NudgeScreen))):
             self.focus_state = self.focus_what = ""
+            self.offpc_tick(None, None)
             return
         aid = cell_activity(self.cfg, dt.datetime.now())
         v = self.focus_verdict(s, aid)
         self.focus_state = v
+        self.offpc_tick(s, v)
         if self.running:
             self._stat({"work": "effective", "neutral": "effective"}.get(v, v), step)
             self._focus_running(v, s, step, aid)
@@ -156,7 +157,8 @@ class FocusMixin:
         self.focus_key = None
         if s["locked"]:
             self.focus_what = "sesión bloqueada"
-            return "away"
+            # Con un pase (trabajo lejos de la compu) bloquear la sesión al irte es lo normal.
+            return "away" if time.time() >= self.focus_pass_until else "neutral"
         if not s["window"]:   # sin la extensión solo se sabe si estás en la compu
             self.focus_what = ""
             v = "work"
@@ -196,7 +198,12 @@ class FocusMixin:
             if not self.distract_secs:
                 self.distract_warned = False
         if v == "away" and act_kind(self.cfg, aid) != "enfocado":   # en una reunión es normal estar quieto
-            self.auto_pause("away", s["idle"])
+            now = time.time()
+            credit = s["idle"]
+            if self.focus_pass_until and now - self.focus_pass_until < credit:
+                credit = max(0.0, now - self.focus_pass_until)   # lo del pase ya contó
+            self.auto_pause("away", credit)
+            self.offpc_ask(now - credit)
 
     def _focus_arming(self, v, s, step, aid):
         if not self.work_due():
@@ -211,6 +218,8 @@ class FocusMixin:
         if v != "neutral":
             self.streak = 0.0
         now = time.time()
+        if v == "away":   # no llegaste (o te fuiste otra vez): quizá estás en algo de trabajo lejos de aquí
+            self.offpc_ask(self.arming_since if s["locked"] else max(self.arming_since, now - s["idle"]))
         late = now - self.arming_since
         level = sum(late >= m * 60 for m in self.cfg["focus_nudge_min"])
         if level > self.nudge:
@@ -251,32 +260,14 @@ class FocusMixin:
         self.render()
 
     def declare_intent(self, text, done):
-        """Desde la pantalla de «¿Arrancamos?»: dices en qué trabajas lejos de la compu y la IA juzga.
-        done(ok, mensaje) se llama si no se te creyó (si sí, arranca el pomodoro y la pantalla se cierra)."""
-        aid = cell_activity(self.cfg, dt.datetime.now())
-        what = act_label(self.cfg, aid)
-        if self.focus_stats_today().get("passes", 0) >= PASSES_PER_DAY:
-            done(False, f"Hoy ya usaste tus {PASSES_PER_DAY} pases. Arranca en la compu.")
-            return
-
-        def verdict(ok):
-            if ok is False:
-                self._stat("denied", 1)
-                done(False, f"Eso no suena a {what}. Arranca con lo que toca.")
-                return
-            mins = self.cfg["work_min"] if ok else 10   # sin IA disponible: te creo, pero menos rato
-            self.focus_pass_until = time.time() + mins * 60
-            self._stat("passes", 1)
-            self.start_effective()
-            notify("✅ Cuenta como trabajo", f"Por {mins} min no pauso aunque no toques la compu.")
-
-        if self.cfg["focus_llm"]:
-            self.judge.ask_intent(self.act_desc(aid), text, verdict)
-        else:
-            verdict(None)
+        """Desde la pantalla de «¿Arrancamos?»: dices en qué trabajas lejos de la compu y la IA juzga (ver
+        `controller/offpc.py`). done(ok, mensaje) se llama si no se te creyó (si sí, arranca el pomodoro y la
+        pantalla se cierra)."""
+        self.offpc_answer(text, source="desktop", done=done)
 
     def focus_info(self):
         """Lo que se manda al servidor con la señal de vida (para el bot)."""
         return {"focus": {"state": self.focus_state, "what": self.focus_what, "nudge": self.nudge,
                           "arming_since": self.arming_since, "today": self.focus_stats_today(),
-                          "llm_calls": self.judge.calls_today()}}
+                          "llm_calls": self.judge.calls_today(),
+                          "offpc": (self.offpc or {}).get("what") if (self.offpc or {}).get("state") == "active" else None}}

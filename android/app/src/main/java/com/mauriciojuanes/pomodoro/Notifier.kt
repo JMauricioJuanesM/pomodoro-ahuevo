@@ -35,7 +35,7 @@ object Notifier {
         Intent(ctx, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
         PendingIntent.FLAG_IMMUTABLE)
 
-    fun alert(ctx: Context, title: String, text: String, vibrate: Boolean = true) {
+    fun alert(ctx: Context, title: String, text: String, vibrate: Boolean = true, open: PendingIntent? = null) {
         val nm = ctx.getSystemService(NotificationManager::class.java)
         // En "No molestar" puesto por nosotros no sonaría: lo quitamos un momento para avisar.
         val dnd = Store.dndByUs && nm.isNotificationPolicyAccessGranted
@@ -45,7 +45,7 @@ object Notifier {
             .setContentTitle(title)
             .setContentText(text)
             .setStyle(Notification.BigTextStyle().bigText(text))
-            .setContentIntent(openApp(ctx))
+            .setContentIntent(open ?: openApp(ctx))
             .setAutoCancel(true)
             .setTimeoutAfter(10 * 60 * 1000L)
             .build()

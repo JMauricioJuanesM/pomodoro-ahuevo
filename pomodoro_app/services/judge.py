@@ -33,6 +33,14 @@ SYS_WINDOWS = ("Eres el sensor de un pomodoro. Para cada ventana numerada decide
                "actividad, incluida documentación, IA, correo de trabajo o tutoriales del tema), N = neutral "
                "(no suma ni resta), D = distracción (ocio, redes, videos, compras, noticias no relacionadas). "
                "Responde solo líneas «número letra», sin nada más.")
+SYS_OFFPC = ("Eres el sensor de un pomodoro. La persona se alejó de la compu en horario de trabajo y dice qué está "
+             "haciendo. Decide: 1) si es una forma legítima de hacer la actividad de su horario (P) o una excusa, "
+             "ocio u otra cosa (D); 2) dónde se hace: pc (se puede y debería hacer en la compu), phone (necesita "
+             "el teléfono: llamada, mensajes de trabajo, autenticar, fotos) o none (lejos de las pantallas: "
+             "imprimir, firmar, ir a una oficina, leer en papel, pensar con libreta); 3) cuántos minutos es "
+             "razonable (5–60); 4) qué apps del teléfono se valen, de: messaging, work, maps, finance, reading, "
+             "education, shopping, audio (vacío si ninguna). Los pasos caminados ayudan a ver si cuadra. "
+             "Responde solo una línea «P none 20 maps,work» o «D».")
 SYS_INTENT = ("Eres el sensor de un pomodoro. La persona dice qué está haciendo lejos de la pantalla. Decide si "
               "es una forma legítima de hacer la actividad de su horario (P) o una excusa / otra cosa (D). "
               "Responde solo la letra.")
@@ -65,8 +73,10 @@ class Judge:
         d.setdefault("verdicts", {})   # llave → {"v": veredicto, "ts"}
         d.setdefault("learned", {})    # llave → veredicto (lo que corregiste tú)
         d.setdefault("calls", {})      # día → llamadas a la IA
+        d.setdefault("offpc", {})      # actividad|frase → {"r": veredicto fuera de la compu, "ts"}
         old = time.time() - CACHE_DAYS * 86400
         d["verdicts"] = {k: v for k, v in d["verdicts"].items() if v.get("ts", 0) > old}
+        d["offpc"] = {k: v for k, v in d["offpc"].items() if v.get("ts", 0) > old}
         d["calls"] = {k: v for k, v in d["calls"].items() if k >= (dt.date.today() - dt.timedelta(days=14)).isoformat()}
         return d
 
@@ -120,6 +130,23 @@ class Judge:
             return
         self.q.put(("intent", activity, statement, callback))
 
+    def offpc_known(self, key):
+        with self.lock:
+            v = self.data["offpc"].get(key)
+            return v["r"] if v else None
+
+    def ask_offpc(self, key, activity, statement, away_min, steps, callback):
+        """¿Lo que haces lejos de la compu cuenta? callback(dict | None) en el hilo de la interfaz, con
+        {"ok", "where" (pc|phone|none), "minutes", "allow" [categorías]}. None: sin IA disponible."""
+        cached = self.offpc_known(key)
+        if cached:
+            self.app.after(0, lambda: callback(dict(cached)))
+            return
+        if not self._budget_ok():
+            self.app.after(0, lambda: callback(None))
+            return
+        self.q.put(("offpc", key, activity, statement, away_min, steps, callback))
+
     # ---------- hilo aparte ----------
     @staticmethod
     def _bin():
@@ -164,6 +191,9 @@ class Judge:
             if first[0] == "intent":
                 self._intent(*first[1:])
                 continue
+            if first[0] == "offpc":
+                self._offpc(*first[1:])
+                continue
             batch = [first]
             time.sleep(3)   # juntar lo que llegue casi al mismo tiempo
             while len(batch) < BATCH:
@@ -171,7 +201,7 @@ class Judge:
                     item = self.q.get_nowait()
                 except queue.Empty:
                     break
-                if item[0] == "intent":
+                if item[0] in ("intent", "offpc"):
                     self.q.put(item)
                     break
                 batch.append(item)
@@ -197,3 +227,30 @@ class Judge:
         self._save()
         verdict = True if out.startswith("P") else False if out.startswith("D") else None
         self.app.after(0, lambda: callback(verdict))
+
+    def _offpc(self, key, activity, statement, away_min, steps, callback):
+        prompt = f"Actividad: {activity}\nLleva fuera: {away_min} min\nDice: {statement[:200]}"
+        if steps is not None:
+            prompt += f"\nPasos que contó el teléfono mientras: {steps}"
+        out = self._call(SYS_OFFPC, prompt)
+        r = parse_offpc(out)
+        if r and steps is None:   # con pasos cada caso es distinto; sin ellos, la frase basta para recordar
+            with self.lock:
+                self.data["offpc"][key] = {"r": r, "ts": time.time()}
+        self._save()
+        self.app.after(0, lambda: callback(r))
+
+
+CATS = ("messaging", "work", "maps", "finance", "reading", "education", "shopping", "audio")
+
+
+def parse_offpc(out):
+    """«P none 20 maps,work» → dict; «D» → {"ok": False}; otra cosa → None."""
+    m = re.match(r"\s*([PD])\b\s*(pc|phone|none)?\s*(\d+)?\s*([a-z, ]*)", out or "")
+    if not m:
+        return None
+    if m.group(1) == "D":
+        return {"ok": False, "where": None, "minutes": 0, "allow": []}
+    allow = [c for c in re.split(r"[, ]+", m.group(4) or "") if c in CATS]
+    minutes = max(5, min(60, int(m.group(3) or 15)))
+    return {"ok": True, "where": m.group(2) or "none", "minutes": minutes, "allow": allow}

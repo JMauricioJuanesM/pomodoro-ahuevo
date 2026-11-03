@@ -113,3 +113,12 @@ def test_alert_goes_to_journal(client):
     assert items[-1]["type"] == "urgencia" and items[-1]["auto"]
     client.post("/api/alert", headers=H, json={"source": "phone", "level": "selftest"})
     assert len(client.get("/api/journal", headers=H).json()["items"]) == 1
+
+
+def test_offpc_msgs(client):
+    r = client.post("/api/offpc", headers=H, json={"kind": "answer", "ask": "a1", "text": "Imprimo el contrato",
+                                                    "steps": 120, "source": "phone"})
+    assert r.status_code == 200
+    msgs = client.get("/api/state", headers=H).json()["offpc_msgs"]
+    assert msgs[-1]["text"] == "Imprimo el contrato" and msgs[-1]["steps"] == 120 and msgs[-1]["ask"] == "a1"
+    assert client.post("/api/offpc", headers=H, json={"kind": "otro"}).status_code == 400

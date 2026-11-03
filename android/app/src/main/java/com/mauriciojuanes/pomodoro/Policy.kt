@@ -46,6 +46,10 @@ object Policy {
         val aid = s.cell(t)
         val a = s.activity(aid)
         val lock = lockOf(a)
+        // Trabajo lejos de la compu: en el teléfono solo lo que necesita eso (lo decidió la IA de la compu).
+        Offpc.active()?.let { o ->
+            return P(aid, o.optString("what"), s.kind(aid), true, true, Offpc.allow(o), "IA")
+        }
         val (allow, source) = allowFor(aid, a)
         return P(aid, s.label(aid), s.kind(aid), lock == "both" || lock == "pc", lock == "both" || lock == "phone",
             allow, source)

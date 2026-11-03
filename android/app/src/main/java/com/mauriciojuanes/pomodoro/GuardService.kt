@@ -72,6 +72,7 @@ class GuardService : AccessibilityService() {
         getSystemService(InputMethodManager::class.java)?.enabledInputMethodList?.forEach { ignored += it.packageName }
         if (!PomodoroService.running) PomodoroService.start(this)
         handler.post(loop)
+        Steps.start(this)
         screen = ScreenWatch(this).also { it.start() }
         registerReceiver(installs, IntentFilter(Intent.ACTION_PACKAGE_ADDED).apply { addDataScheme("package") })
     }
@@ -213,6 +214,7 @@ class GuardService : AccessibilityService() {
         lastAccrual = now
         if (Policy.allowed(this, fg, p) || fg.isEmpty()) return
         usedMs += dt
+        if (Offpc.onPhoneUse(this, usedMs, appName(fg))) return   // era lejos de las pantallas: se acaba el pase
         val mins = usedMs / 60000.0
         var warnMin = cfg.optDouble("phone_work_warn_min", 3.0)
         var lockMin = cfg.optDouble("phone_work_lock_min", 5.0)

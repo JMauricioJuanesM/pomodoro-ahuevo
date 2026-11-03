@@ -259,7 +259,7 @@ class TimerMixin:
                 "skippable": self.break_skippable, "shutdown": bool(self.shutdown_at),
                 "arming": self.arming_since is not None and self.phase == "work", "nudge": self.nudge,
                 "arming_since": round(self.arming_since) if self.arming_since else None,
-                "stats": {"day": today, "count": self.cfg["stats"].get(today, 0)}}
+                "stats": {"day": today, "count": self.cfg["stats"].get(today, 0)}, **self.offpc_public()}
 
     def apply_remote_timer(self, t):
         """El teléfono inició, pausó, saltó o empezó un descanso: hacer lo mismo aquí."""

@@ -338,6 +338,7 @@ object Engine {
         if (t != null && (fresh || st.optString("timer_source") != "phone" && rev > Store.timerRevSeen)) {
             Sync.dropTimer()
             set(Timer.fromJson(t), push = false)
+            Offpc.onTimer(ctx)
         }
         synced = true
         Store.timerRevSeen = maxOf(Store.timerRevSeen, rev)

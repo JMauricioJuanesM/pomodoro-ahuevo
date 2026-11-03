@@ -73,6 +73,9 @@ DEFAULT_CONFIG = {
     "focus_llm_model": "claude-haiku-5-5",
     "focus_llm_per_hour": 20,
     "focus_llm_per_day": 120,
+    "offpc": True,             # si te vas en horario de trabajo, preguntar qué haces (trabajo lejos de la compu)
+    "offpc_max_min": 90,       # tope diario de trabajo fuera de la compu que cuenta
+    "offpc_learned": {},       # actividad → lo que has hecho lejos de la compu (para los botones rápidos)
     "focus_stats": {},         # por día: segundos efectivos, de retraso, distraído y fuera
     # Faro: lo comparten la compu y el teléfono (ver services/sync.py)
     "mind_on_unlock": True,      # frase en pantalla completa al desbloquear el teléfono

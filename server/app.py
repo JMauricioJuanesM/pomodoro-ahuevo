@@ -79,7 +79,8 @@ state.setdefault("blocks_source", None)
 state.setdefault("alerts", [])
 for _k, _v in {"journal": [], "inbox": [], "mind": {}, "tasks": {"items": [], "updated": 0},
                "asks": [], "policies": {}, "app_categories": {}, "apps_seen": {}, "release": None,
-               "selftests": {}, "snoozes": {}, "current_task": None, "nightly": {}}.items():
+               "selftests": {}, "snoozes": {}, "current_task": None, "nightly": {},
+               "offpc_msgs": []}.items():
     state.setdefault(_k, _v)
     if _k in HEAVY:
         state.setdefault(_k + "_rev", 0)
@@ -369,6 +370,25 @@ async def answer_ask(aid: str, request: Request):
     state["asks"] = [a for a in state["asks"] if a["answer"] is None or a["answer"]["ts"] > time.time() - 86400]
     await bump("journal")
     return {"rev": state["rev"]}
+
+
+# ---------- fuera de la compu (qué haces cuando el sensor no te ve) ----------
+
+@app.post("/api/offpc", dependencies=[Depends(auth)])
+async def offpc_msg(request: Request):
+    """El teléfono, la web o el bot contestan «¿qué estás haciendo?» (`answer`) o avisan que usaste el
+    teléfono durante un trabajo lejos de las pantallas (`phone_used`). La compu, que lleva el sensor, lo lee
+    del estado (`offpc_msgs`), lo juzga y publica el resultado en el temporizador (`timer.offpc`)."""
+    body = await request.json()
+    kind = body.get("kind") or "answer"
+    if kind not in ("answer", "phone_used", "end"):
+        raise HTTPException(400, "tipo inválido")
+    msg = {"id": _id(), "ts": time.time(), "kind": kind, "ask": body.get("ask"),
+           "text": (body.get("text") or "").strip()[:300], "steps": body.get("steps"),
+           "source": body.get("source") or "?"}
+    state["offpc_msgs"] = [m for m in state["offpc_msgs"] if m["ts"] > time.time() - 6 * 3600][-19:] + [msg]
+    await bump()
+    return {"rev": state["rev"], "id": msg["id"]}
 
 
 # ---------- políticas por actividad y categorías de apps (las escribe el ciclo nocturno) ----------

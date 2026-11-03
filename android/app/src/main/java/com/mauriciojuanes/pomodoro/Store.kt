@@ -23,6 +23,9 @@ data class Timer(
     val arming: Boolean = false,
     val nudge: Int = 0,
     val armingSince: Double? = null,
+    // Trabajo lejos de la compu ([Offpc]): la pregunta o el pase vigente y el último veredicto (JSON, de la compu).
+    val offpc: String? = null,
+    val offpcLast: String? = null,
 ) {
     fun remainingAt(now: Double): Double = if (running) (endTime ?: now) - now else remaining ?: total
 
@@ -48,6 +51,8 @@ data class Timer(
             arming = o.optBoolean("arming"),
             nudge = o.optInt("nudge"),
             armingSince = if (o.isNull("arming_since")) null else o.optDouble("arming_since"),
+            offpc = o.optJSONObject("offpc")?.toString(),
+            offpcLast = o.optJSONObject("offpc_last")?.toString(),
         )
     }
 }
@@ -185,6 +190,9 @@ object Store {
 
     fun revSeen(key: String) = p.getInt("rev_$key", -1)
     fun setRevSeen(key: String, v: Int) = p.edit().putInt("rev_$key", v).apply()
+
+    fun string(key: String) = str(key)
+    fun setString(key: String, v: String) = put(key, v)
 
     fun long(key: String) = p.getLong(key, 0L)
     fun setLong(key: String, v: Long) = p.edit().putLong(key, v).apply()

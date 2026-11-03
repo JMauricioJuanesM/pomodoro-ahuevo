@@ -46,7 +46,7 @@ Si tardas en arrancar, la presión sube por escalones (*Ajustes → Sensor de pr
 |---|---|
 | 2 min | Aviso en la compu y en el teléfono. |
 | 5 min | Teléfono en **modo estricto**: te saca al instante de lo que distrae y bloquea pronto lo demás; en la compu se minimiza lo que distrae. |
-| 8 min | En la compu, pantalla completa **«¿Arrancamos?»** (empezar, o decir en qué trabajas lejos de la compu: lo juzga la IA). El teléfono se bloquea en cuanto lo usas (salvo llamadas, mensajes, ajustes, banco y `phone_essential`). |
+| 8 min | En la compu, pantalla completa **«¿Arrancamos?»** (empezar, o decir en qué trabajas lejos de la compu: ver abajo). El teléfono se bloquea en cuanto lo usas (salvo llamadas, mensajes, ajustes, banco y `phone_essential`). |
 
 En el teléfono, además, cualquier **juego** cuenta como app que distrae, y si vuelves a entrar a una app de
 la que te sacó (o al teléfono justo después de un bloqueo), ya no hay tiempo de gracia.
@@ -62,6 +62,18 @@ Cómo sabe qué haces:
   `focus_cache.json` y hay tope por hora y por día. Si se equivoca, toca la línea del sensor en la ventana
   del Pomodoro («¿sí es trabajo? toca aquí») y se recuerda para esa actividad. Una actividad del horario
   puede llevar `"intent"` (p. ej. `"proyecto: app Android en Kotlin"`) para que la IA juzgue mejor.
+
+### Trabajo lejos de la compu
+
+Si te vas en horario de trabajo, el teléfono te pregunta **«¿qué estás haciendo?»** (telón con botones de
+lo que ya hiciste antes lejos de la compu en esa actividad, o texto libre; también `/fuera <qué>` en el bot
+o el botón «Trabajo lejos de la compu» de la app). La IA (`Judge.ask_offpc`, recordada por frase) decide si
+cuenta y dónde se hace: `pc` (hazlo en la compu), `phone` (solo las apps que hacen falta) o `none` (lejos de
+las pantallas: si usas el teléfono para otra cosa ~1 min, se acaba). Con los **pasos** del teléfono
+(permiso `ACTIVITY_RECOGNITION`, por ADB) juzga mejor «fui a imprimir». Si cuenta, el pomodoro corre y se
+abona lo que ya llevabas fuera; termina al volver a trabajar en la compu o al vencer (y pregunta «¿sigues?»).
+Si no contestaste, al volver la compu pregunta qué hiciste y te devuelve ese rato. Tope diario:
+`offpc_max_min` (90). Todo queda en el diario. Lógica en `controller/offpc.py`; mensajes por `POST /api/offpc`.
 
 Las estadísticas del día (efectivo, retraso, distraído, fuera) salen en la ventana y al final de la jornada,
 y viajan al servidor con la señal de vida (`devices.desktop.info.focus`) para el bot.

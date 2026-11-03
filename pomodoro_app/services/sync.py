@@ -191,6 +191,7 @@ class Sync:
             else:
                 self.sent_timer = None   # aquí no aplica: que el teléfono vea el estado real de la compu
         self.timer_rev_seen = st.get("timer_rev", 0)
+        self.app.offpc_messages(st.get("offpc_msgs"))
         for key, path, field in (("mind", "/api/mind", "mind"), ("tasks", "/api/tasks", None)):
             rev = st.get(key + "_rev", 0)
             if rev and self.revs.get(key) != rev:
