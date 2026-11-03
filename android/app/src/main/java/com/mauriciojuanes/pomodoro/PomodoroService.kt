@@ -101,6 +101,13 @@ class PomodoroService : Service() {
             Updater.maybeInstall(this)
             SelfTest.maybeReport(this)
             if (Engine.online) Hub.reportApps(this)
+            // MIUI quita «ventanas en segundo plano» al reinstalar: sin la compu, avisar (una vez al día) para darlo a mano.
+            if (BgStart.allowed(this) == false && !Engine.desktopAlive && Store.string("bg_warned") != Store.today()) {
+                Store.setString("bg_warned", Store.today())
+                Notifier.alert(this, "⚠️ Faro necesita un permiso", "Otros permisos → «Mostrar ventanas emergentes en segundo plano». " +
+                    "Sin él no salen las frases ni el telón.", vibrate = false, open = android.app.PendingIntent.getActivity(this, 11,
+                    BgStart.settingsIntent(this).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK), android.app.PendingIntent.FLAG_IMMUTABLE))
+            }
         }
         val bank = Store.bankSince > 0
         if (System.currentTimeMillis() - lastHeartbeat > 45_000 || bank != lastBank) {   // modo banco: avisar ya

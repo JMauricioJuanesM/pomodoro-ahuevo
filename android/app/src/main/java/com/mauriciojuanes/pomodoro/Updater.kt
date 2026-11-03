@@ -162,7 +162,17 @@ object Updater {
         // MIUI pide confirmar aunque la app sea su propia instaladora: desde ahora, solo con la pantalla prendida.
         Store.setLong("update_needs_dialog", 1)
         confirmUntil = System.currentTimeMillis() + CONFIRM_MS
-        runCatching { ctx.startActivity(confirm.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+        confirm.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        // Sin «ventanas en segundo plano» (MIUI lo quita al reinstalar, ver [BgStart]) el diálogo no se abre
+        // solo: va por notificación a pantalla completa, y tocarla también lo abre.
+        if (BgStart.allowed(ctx) == false) {
+            Notifier.alert(ctx, "⬇️ Versión nueva de Faro", "Toca para instalarla (el pomodoro sigue donde iba).",
+                fullScreen = true, open = PendingIntent.getActivity(ctx, 9, confirm,
+                    PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT))
+            confirmUntil = System.currentTimeMillis() + 10 * 60_000L
+            return
+        }
+        runCatching { ctx.startActivity(confirm) }
     }
 
     /** Se abrió una ventana (desde [GuardService]): si es el instalador que pedimos, pulsa «Actualizar». */

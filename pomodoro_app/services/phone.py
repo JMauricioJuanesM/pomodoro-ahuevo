@@ -75,7 +75,18 @@ class Phone:
     def adb(self, *args, timeout=15, serial=None):
         serial = serial or self.serial
         cmd = ["adb"] + (["-s", serial] if serial else []) + list(args)
-        r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        try:
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        except subprocess.TimeoutExpired:
+            # ADB por wifi a veces se traba: el teléfono responde al ping pero ningún comando regresa (así se
+            # quedaron sin instalar las versiones 20–24). Dos atoradas seguidas → reiniciar el servidor de ADB;
+            # `ensure` reconecta en la siguiente vuelta.
+            self.adb_stuck = getattr(self, "adb_stuck", 0) + 1
+            if self.adb_stuck >= 2:
+                self.adb_stuck = 0
+                subprocess.run(["adb", "kill-server"], capture_output=True, timeout=15)
+            raise
+        self.adb_stuck = 0
         return r.stdout
 
     def shell(self, *args):

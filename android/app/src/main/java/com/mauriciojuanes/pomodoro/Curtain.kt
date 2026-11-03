@@ -443,11 +443,28 @@ object Curtain {
     @Volatile var visible: String? = null
 
     fun show(ctx: Context, mode: String, payload: String = "") {
-        runCatching {
-            ctx.startActivity(Intent(ctx, CurtainActivity::class.java).putExtra("mode", mode).putExtra("payload", payload)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_NO_ANIMATION))
+        val i = Intent(ctx, CurtainActivity::class.java).putExtra("mode", mode).putExtra("payload", payload)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_NO_ANIMATION)
+        // MIUI quita «ventanas en segundo plano» cada vez que se reinstala la app ([BgStart]); sin él, abrir la
+        // pantalla no hace nada. Entonces va por notificación a pantalla completa (esa sí la deja pasar).
+        if (BgStart.allowed(ctx) == false && mode != "mind") {
+            fallback(ctx, mode, i)
+            return
         }
+        runCatching { ctx.startActivity(i) }
         if (mode == "mind") Mind.shown()
+    }
+
+    private fun fallback(ctx: Context, mode: String, i: Intent) {
+        val (title, text) = when (mode) {
+            "break" -> "☕ Descanso" to "Lejos de la pantalla. Toca para ver cuánto falta."
+            "offpc" -> "🚶 ¿Qué estás haciendo?" to "Si es trabajo lejos de la compu, cuenta. Toca para contestar."
+            "task" -> "⏰ Tienes una tarea vencida" to "Toca para decidir: hecha, ahora o posponer."
+            "sos" -> "🆘 Respira conmigo" to "Toca para abrir la respiración guiada."
+            else -> "🗼 Faro" to "Toca para abrir."
+        }
+        Notifier.alert(ctx, title, text, vibrate = mode != "break", fullScreen = true, open = android.app.PendingIntent
+            .getActivity(ctx, mode.hashCode(), i, android.app.PendingIntent.FLAG_IMMUTABLE or android.app.PendingIntent.FLAG_UPDATE_CURRENT))
     }
 
     /** ¿El descanso tapa el teléfono ahora? */
