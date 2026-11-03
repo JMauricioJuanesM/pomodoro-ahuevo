@@ -6,6 +6,7 @@ HOST=${POMODORO_BUILD_HOST:-contabo}
 DIR=$(cd "$(dirname "$0")" && pwd)
 rsync -a "$DIR/app.py" "$DIR/screen.py" "$DIR/Dockerfile" "$DIR/docker-compose.yml" "$DIR/nginx.conf" "$DIR/web" \
   "$HOST:/opt/pomodoro-sync/"
-rsync -a --delete --exclude __pycache__ "$DIR/nightly/" "$HOST:/opt/faro/"
+# Sin --delete: en /opt/faro también viven el repo, la copia de trabajo, los logs y el venv.
+rsync -a --exclude __pycache__ "$DIR/nightly/" "$HOST:/opt/faro/"
 ssh "$HOST" 'cd /opt/pomodoro-sync && docker compose up -d --build && sleep 3 && curl -s 127.0.0.1:8090/health &&
   /opt/faro/install.sh'
