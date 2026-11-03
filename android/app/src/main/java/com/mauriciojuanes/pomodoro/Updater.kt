@@ -36,6 +36,8 @@ object Updater {
     private val CONFIRM = setOf("actualizar", "instalar", "update", "install", "continuar", "continue", "siguiente",
         "next", "aceptar", "ok", "listo", "done")
     private const val CONFIRM_MS = 90_000L
+    private const val MAX_FAILS = 3
+    private const val BACKOFF_MS = 10 * 60_000L
     @Volatile private var busy = false
     @Volatile private var confirmUntil = 0L
     private var pending: JSONObject? = null
@@ -57,7 +59,6 @@ object Updater {
             pending = null
             return
         }
-        if (Store.long("update_fail_$code") >= 3) return
         pending = rel
         status = "Hay versión nueva: ${rel.optString("version_name")}"
         maybeInstall(ctx)
@@ -77,11 +78,12 @@ object Updater {
     /**
      * Cada tanto (desde [PomodoroService]): si hay pendiente y es buen momento, instala. Sin diálogo, ya (son
      * unos segundos); con diálogo, con la pantalla prendida y fuera de un pomodoro (en el descanso sí, aunque
-     * esté el telón). `now` (el botón de Ajustes) no espera.
+     * esté el telón). Tras un fallo espera (ver [fail]). `now` (el botón de Ajustes) no espera.
      */
     fun maybeInstall(ctx: Context, now: Boolean = false) {
         val rel = pending ?: return
         if (busy) return
+        if (!now && fails(ctx) > 0 && System.currentTimeMillis() < Store.long("update_retry_at")) return
         if (!now && !silent(ctx)) {
             if (Engine.working() || Curtain.visible !in setOf(null, "break", "mind")) return
             if (!ctx.getSystemService(PowerManager::class.java).isInteractive) return
@@ -109,7 +111,7 @@ object Updater {
         try {
             val pi = ctx.packageManager.packageInstaller
             val params = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL)
-            if (Build.VERSION.SDK_INT >= 31) params.setRequireUserAction(PackageInstaller.SessionParams.USER_ACTION_NOT_REQUIRED)
+            if (Build.VERSION.SDK_INT >= 31 && Store.long("update_needs_dialog") == 0L) params.setRequireUserAction(PackageInstaller.SessionParams.USER_ACTION_NOT_REQUIRED)
             val id = pi.createSession(params)
             pi.openSession(id).use { s ->
                 s.openWrite("Faro.apk", 0, apk.length()).use { out -> apk.inputStream().use { it.copyTo(out) } ; }
@@ -130,9 +132,23 @@ object Updater {
         status = "No se pudo actualizar: $why"
         // Abortada (p. ej. se apagó la pantalla con el diálogo abierto): se reintenta sin contarla.
         if ("ABORTED" in why) return
-        Store.setLong("update_fail_$code", Store.long("update_fail_$code") + 1)
+        // Fallos seguidos desde la versión instalada, aunque sean de versiones publicadas distintas (el 2-nov fueron 22
+        // de la 15 a la 21): se espera 10 min, luego 20, y a la tercera un día, con aviso para instalarla a mano.
+        val n = fails(ctx) + 1
+        Store.setLong("update_fails_from", installedCode(ctx))
+        Store.setLong("update_fails", n)
+        val wait = if (n >= MAX_FAILS) 86_400_000L else BACKOFF_MS shl (n - 1).toInt()
+        Store.setLong("update_retry_at", System.currentTimeMillis() + wait)
+        // MIUI niega la instalación sin diálogo: desde ahora con diálogo (pantalla prendida, la accesibilidad lo acepta).
+        if ("permission denied" in why.lowercase()) Store.setLong("update_needs_dialog", 1)
         Sync.alert("update_failed", ctx.packageName, "Faro $code", "update", why.take(200))
+        if (n >= MAX_FAILS) Notifier.alert(ctx, "Faro no pudo actualizarse sola",
+            "Falló $n veces seguidas (${why.take(80)}). Lo vuelve a intentar mañana; o ve a Ajustes → Instalar ahora.", vibrate = false)
     }
+
+    /** Fallos seguidos desde la versión instalada (se olvidan en cuanto se instala una nueva). */
+    private fun fails(ctx: Context): Long =
+        if (Store.long("update_fails_from") == installedCode(ctx)) Store.long("update_fails") else 0
 
     /** Android pidió confirmar: abre su diálogo y que la accesibilidad lo acepte. */
     fun needsUser(ctx: Context, confirm: Intent) {
