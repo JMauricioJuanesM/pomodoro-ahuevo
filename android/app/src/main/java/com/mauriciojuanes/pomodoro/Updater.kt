@@ -70,7 +70,7 @@ object Updater {
      * ¿Android la deja instalar sin preguntar? Solo si esta app es su propia instaladora (después de la
      * primera actualización hecha por ella misma; las instaladas por ADB no cuentan).
      */
-    private fun silent(ctx: Context): Boolean = Build.VERSION.SDK_INT >= 31 && runCatching {
+    private fun silent(ctx: Context): Boolean = Build.VERSION.SDK_INT >= 31 && Store.long("update_needs_dialog") == 0L && runCatching {
         ctx.packageManager.getInstallSourceInfo(ctx.packageName).installingPackageName == ctx.packageName
     }.getOrDefault(false)
 
@@ -128,12 +128,16 @@ object Updater {
     fun fail(ctx: Context, code: Long, why: String) {
         busy = false
         status = "No se pudo actualizar: $why"
+        // Abortada (p. ej. se apagó la pantalla con el diálogo abierto): se reintenta sin contarla.
+        if ("ABORTED" in why) return
         Store.setLong("update_fail_$code", Store.long("update_fail_$code") + 1)
         Sync.alert("update_failed", ctx.packageName, "Faro $code", "update", why.take(200))
     }
 
     /** Android pidió confirmar: abre su diálogo y que la accesibilidad lo acepte. */
     fun needsUser(ctx: Context, confirm: Intent) {
+        // MIUI pide confirmar aunque la app sea su propia instaladora: desde ahora, solo con la pantalla prendida.
+        Store.setLong("update_needs_dialog", 1)
         confirmUntil = System.currentTimeMillis() + CONFIRM_MS
         runCatching { ctx.startActivity(confirm.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
     }
