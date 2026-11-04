@@ -80,7 +80,9 @@ DEFAULT_CONFIG = {
     # Faro: lo comparten la compu y el teléfono (ver services/sync.py)
     "mind_on_unlock": True,      # frase en pantalla completa al desbloquear el teléfono
     "mind_unlock_every_min": 20,
-    "mind_show_sec": 7,
+    "mind_show_sec": 7,          # sin mind_until_touch, se quita sola a los tantos segundos
+    "mind_until_touch": True,    # la frase se queda hasta que la toques (no antes de mind_min_sec)
+    "mind_min_sec": 3,
     "mind_on_break": True,       # frase en la pantalla del descanso (compu)
     "phone_break_lock": True,    # el descanso tapa también el teléfono
     "break_allow": ["messaging"],  # tipos de app que sí se pueden usar con el teléfono tapado

@@ -122,10 +122,14 @@ fun SettingsScreen(openApps: () -> Unit, openSub: (String) -> Unit) {
             }
 
             Section("Faro", footer = "Las frases las reescribe cada noche la IA según tu diario y tus 👍/👎. Las tareas vienen de TickTick.") {
-                SwitchRow("Frases al desbloquear", "Pantalla completa, unos segundos", cBool("mind_on_unlock", true)) { setCfg("mind_on_unlock", it) }
+                SwitchRow("Frases al desbloquear", "Pantalla completa", cBool("mind_on_unlock", true)) { setCfg("mind_on_unlock", it) }
                 if (cBool("mind_on_unlock", true)) {
                     RowDivider()
                     StepperRow("…a lo más cada", cInt("mind_unlock_every_min", 20), 5..240, 5, " min") { setCfg("mind_unlock_every_min", it) }
+                    RowDivider()
+                    SwitchRow("…hasta que la toques", "Si no, se quita sola a los 7 s", cBool("mind_until_touch", true)) {
+                        setCfg("mind_until_touch", it)
+                    }
                 }
                 RowDivider()
                 SwitchRow("El descanso tapa el teléfono", "Como en la compu; llamadas, banco y WhatsApp sí", cBool("phone_break_lock", true)) {
