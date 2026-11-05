@@ -81,7 +81,7 @@ class ScreenWatch:
                     self.last_ensure = time.time()
                     ensure_extension()
                 self._check()
-            except (OSError, ValueError, urllib.error.URLError):
+            except (OSError, ValueError, RuntimeError, urllib.error.URLError):
                 pass
             time.sleep(2)
 

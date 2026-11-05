@@ -86,8 +86,10 @@ class Sync:
             try:
                 st = self._req("GET", f"/api/wait?rev={self.rev}&source={SOURCE}&timeout=40", timeout=60)
                 self.online = True
-                self.rev = st["rev"]
                 self.app.after(0, lambda st=st: self._on_state(st))
+                self.rev = st["rev"]
+            except RuntimeError:   # la interfaz aún no arranca su ciclo (al iniciar): se reintenta
+                time.sleep(1)
             except (OSError, ValueError, urllib.error.URLError):
                 self.online = False
                 time.sleep(15)
