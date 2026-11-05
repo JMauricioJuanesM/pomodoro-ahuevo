@@ -6,6 +6,7 @@ from tkinter import messagebox
 
 from .config import load_config
 from .constants import COLORS, NAMES
+from .controller.enforce import EnforceMixin
 from .controller.faro import FaroMixin
 from .controller.focus import FocusMixin
 from .controller.offpc import OffpcMixin
@@ -18,6 +19,7 @@ from .services.judge import Judge
 from .services.phone import Phone
 from .services.presence import Presence
 from .services.screenwatch import ScreenWatch
+from .services.textwatch import TextWatch
 from .services.shortcuts import restore_shortcuts
 from .services.sync import Sync
 from .services.system import notify
@@ -26,7 +28,8 @@ from .ui.main_window import MainWindowMixin
 from .ui.widget import Widget
 
 
-class Pomodoro(MainWindowMixin, TimerMixin, WorkdayMixin, RemindersMixin, FocusMixin, OffpcMixin, FaroMixin, tk.Tk):
+class Pomodoro(MainWindowMixin, TimerMixin, WorkdayMixin, RemindersMixin, FocusMixin, EnforceMixin, OffpcMixin, FaroMixin,
+               tk.Tk):
     def __init__(self, sock, auto=False):
         super().__init__()
         self.title("Faro")
@@ -70,7 +73,9 @@ class Pomodoro(MainWindowMixin, TimerMixin, WorkdayMixin, RemindersMixin, FocusM
         self.screenwatch = ScreenWatch(self, self.sync.settings)
         self.presence = Presence()
         self.judge = Judge(self)
+        self.textwatch = TextWatch(self)
         self.init_focus()
+        self.init_enforce()
         self.init_offpc()
         self.init_faro()
 

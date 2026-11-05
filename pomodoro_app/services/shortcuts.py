@@ -21,7 +21,23 @@ SHORTCUTS = [
     ("org.gnome.shell.keybindings", "toggle-overview", "@as []"),
     ("org.gnome.shell.keybindings", "toggle-application-view", "@as []"),
     ("org.gnome.shell.keybindings", "toggle-message-tray", "@as []"),
-]
+    ("org.gnome.shell.keybindings", "toggle-quick-settings", "@as []"),
+    ("org.gnome.shell.keybindings", "focus-active-notification", "@as []"),
+    ("org.gnome.desktop.wm.keybindings", "panel-run-dialog", "@as []"),
+    # mover la pantalla del descanso a otro monitor (dejaba uno libre)
+    ("org.gnome.desktop.wm.keybindings", "move-to-monitor-left", "@as []"),
+    ("org.gnome.desktop.wm.keybindings", "move-to-monitor-right", "@as []"),
+    ("org.gnome.desktop.wm.keybindings", "move-to-monitor-up", "@as []"),
+    ("org.gnome.desktop.wm.keybindings", "move-to-monitor-down", "@as []"),
+    ("org.gnome.desktop.wm.keybindings", "begin-move", "@as []"),
+    ("org.gnome.desktop.wm.keybindings", "begin-resize", "@as []"),
+    ("org.gnome.desktop.wm.keybindings", "toggle-maximized", "@as []"),
+    ("org.gnome.desktop.wm.keybindings", "unmaximize", "@as []"),
+    ("org.gnome.mutter.keybindings", "toggle-tiled-left", "@as []"),
+    ("org.gnome.mutter.keybindings", "toggle-tiled-right", "@as []"),
+    ("org.gnome.desktop.wm.preferences", "mouse-button-modifier", "''"),   # Super + arrastrar
+    ("org.gnome.settings-daemon.plugins.media-keys", "search", "@as []"),
+] + [("org.gnome.shell.keybindings", f"switch-to-application-{i}", "@as []") for i in range(1, 10)]
 
 
 def disable_shortcuts():

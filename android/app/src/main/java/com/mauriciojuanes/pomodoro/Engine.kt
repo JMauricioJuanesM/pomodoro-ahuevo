@@ -162,12 +162,40 @@ object Engine {
             } else if (authority && rem <= 0) {
                 endBreak()
             }
+            watchLongPlan()
             if (working() && inOvertime(now) && now() - lastNag > 20 * 60) {
                 lastNag = now()
                 Notifier.alert(ctx, "Tu jornada ya terminó", "Estás trabajando fuera de horario. Ve cerrando.")
             }
         }
         changed()
+    }
+
+    private var longLocked: Boolean? = null
+    private var longWarned = false
+
+    /** Avisa cuando el descanso largo libera el teléfono, un minuto antes de volver a taparlo y al taparlo. */
+    private fun watchLongPlan() {
+        val p = Curtain.longPlan()
+        if (p == null) {
+            longLocked = null
+            return
+        }
+        val (locked, left) = p
+        if (longLocked != null && locked != longLocked) {
+            longWarned = false
+            if (locked) {
+                Notifier.alert(ctx, "🔒 Se vuelve a tapar el teléfono", "Sigue tu descanso lejos de la pantalla.", vibrate = false)
+                if (ctx.getSystemService(android.os.PowerManager::class.java).isInteractive) Curtain.show(ctx, "break")
+            } else {
+                Notifier.alert(ctx, "📱 Teléfono libre ${Engine.fmt(left)}", "Úsalo con calma; luego se vuelve a tapar.", vibrate = false)
+            }
+        }
+        if (!locked && !longWarned && left <= 60 && left < remaining() - 1) {
+            longWarned = true
+            Notifier.alert(ctx, "⏳ En 1 min se tapa el teléfono", "Ve cerrando lo que estés haciendo.", vibrate = false)
+        }
+        longLocked = locked
     }
 
     private fun checkDay(now: LocalDateTime) {

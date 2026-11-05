@@ -131,6 +131,12 @@ fun SettingsScreen(openApps: () -> Unit, openSub: (String) -> Unit) {
                 SwitchRow("El descanso tapa el teléfono", "Como en la compu; llamadas, banco y WhatsApp sí", cBool("phone_break_lock", true)) {
                     setCfg("phone_break_lock", it)
                 }
+                if (cBool("phone_break_lock", true)) {
+                    RowDivider()
+                    SwitchRow("Descanso largo por tramos", "Tapado, libre, tapado (≈10 min cada uno)", cBool("phone_long_flex", true)) {
+                        setCfg("phone_long_flex", it)
+                    }
+                }
                 RowDivider()
                 SwitchRow("Recordatorios tajantes de tareas", "Pantalla completa al vencer", cBool("tasks_firm", true)) { setCfg("tasks_firm", it) }
                 RowDivider()

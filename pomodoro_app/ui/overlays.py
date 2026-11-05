@@ -1,19 +1,24 @@
 """Pantallas completas (una ventana por monitor) que no se dejan cerrar: descanso, aviso y fin de jornada."""
 import datetime as dt
+import os
 import time
 import tkinter as tk
 
 from ..core.reason import nonsense
 from ..core.schedule import act_label, next_change
 from ..core.timefmt import fmt, fmt_hm
+from ..services.screenwatch import SHOT_DIR
 from ..services.system import lock_session, monitors
+
+OVERLAY_FLAG = os.path.join(SHOT_DIR, "overlay")   # la extensión vigía no deja abrir la vista de actividades
 
 
 class Overlay:
     """Ventanas a pantalla completa (una por monitor) que no se dejan cerrar.
 
     Las subclases guardan lo que necesitan, implementan `fill` y al final de su __init__ llaman `build`.
-    Si conectas otro monitor con la pantalla abierta, también se tapa.
+    Si conectas otro monitor con la pantalla abierta, también se tapa. Si una ventana acaba en otro monitor
+    (arrastrada desde la vista de actividades, o con un atajo), se regresa a su lugar y se bloquea la sesión.
     """
 
     BG = "#111"
@@ -26,6 +31,7 @@ class Overlay:
         self.unfocused_ticks = 0
         self.guard_ticks = 0
         self.last_lock = 0.0
+        self.moved_ticks = 0
 
     def fill(self, box, main):
         """Contenido de una pantalla; `main` es la del primer monitor, la que lleva textos y botones."""
@@ -35,6 +41,7 @@ class Overlay:
         self.mons = monitors() or [None]
         self.windows = [self._window(mon, main=not i) for i, mon in enumerate(self.mons)]
         self.main = self.windows[0]
+        self._touch_flag()
         self.main.focus_force()
         try:
             self.main.grab_set_global()
@@ -94,19 +101,63 @@ class Overlay:
         self.guard_ticks += 1
         if self.guard_ticks % self.MONITOR_CHECK == 0:
             self.sync_monitors()
+            self._touch_flag()
         for w in self.windows:
             w.attributes("-topmost", True)
             w.lift()
+        escaped = self._check_places()
         if self.main.focus_displayof() is not None:
             self.unfocused_ticks = 0
         else:
             self.main.focus_force()
             self.unfocused_ticks += 1
-            if (self.app.cfg["lock_if_escape"] and self.unfocused_ticks >= 4
-                    and time.time() - self.last_lock > 15):
-                self.last_lock = time.time()
-                lock_session()
+            escaped = escaped or self.unfocused_ticks >= 4
+        if self.app.cfg["lock_if_escape"] and escaped and time.time() - self.last_lock > 15:
+            self.last_lock = time.time()
+            lock_session()
         self.main.after(500, self.guard)
+
+    @staticmethod
+    def _inside(w, mon):
+        try:
+            cx = w.winfo_rootx() + w.winfo_width() // 2
+            cy = w.winfo_rooty() + w.winfo_height() // 2
+        except tk.TclError:
+            return True
+        x, y, mw, mh = mon
+        return x <= cx < x + mw and y <= cy < y + mh
+
+    def _check_places(self):
+        """¿Alguna pantalla se salió de su monitor? La regresa. True si fue un intento de escapar."""
+        if len(self.mons) < 2 or None in self.mons:
+            return False
+        moved = [(w, mon) for w, mon in zip(self.windows, self.mons) if not self._inside(w, mon)]
+        if not moved:
+            self.moved_ticks = 0
+            return False
+        if monitors() != self.mons:   # conectaste o quitaste un monitor: no es trampa
+            self.sync_monitors()
+            return False
+        self.moved_ticks += 1
+        for w, mon in moved:
+            self._place(w, mon)
+        if self.moved_ticks >= 3:   # el gestor de ventanas no la deja regresar: se rehacen las secundarias
+            self.moved_ticks = 0
+            if not self._inside(self.main, self.mons[0]):
+                self._place(self.main, self.mons[0])
+            for w in self.windows[1:]:
+                w.destroy()
+            self.windows = [self.main] + [self._window(mon, main=False) for mon in self.mons[1:]]
+        return True
+
+    @staticmethod
+    def _touch_flag():
+        try:
+            os.makedirs(SHOT_DIR, exist_ok=True)
+            with open(OVERLAY_FLAG, "w") as f:
+                f.write(str(time.time()))
+        except OSError:
+            pass
 
     def close(self):
         try:
@@ -116,6 +167,10 @@ class Overlay:
         for w in self.windows:
             w.destroy()
         self.windows = []
+        try:
+            os.remove(OVERLAY_FLAG)
+        except OSError:
+            pass
 
 
 class BreakScreen(Overlay):
@@ -524,3 +579,37 @@ class AwayScreen(Overlay):
     def show_result(self, msg):
         if self.windows:
             self.msg.config(text=msg)
+
+
+class LadderShutdownScreen(Overlay):
+    """Último escalón de la escalera de castigos: cuenta regresiva y la compu se apaga."""
+
+    def __init__(self, app, why, secs, on_done):
+        super().__init__(app)
+        self.why, self.left, self.on_done = why, int(secs), on_done
+        self.counts = []
+        self.build()
+        self.countdown()
+
+    def fill(self, box, main):
+        self.label(box, "⏻ LA COMPU SE APAGA", 26, "#e74c3c", True)
+        self.counts.append(self.label(box, fmt(self.left), 110, bold=True, pady=10))
+        if not main:
+            return
+        self.label(box, self.why, 18, "#ccc")
+        self.label(box, "Ya hubo aviso, minimizar, cerrar y bloquear. Lo que sigue es apagar.", 15, "#999",
+                   pady=(14, 0))
+        self.label(box, "Levántate, sal del cuarto y habla con alguien. Esto también pasa.", 17, "#f0d589", True,
+                   pady=(26, 0))
+
+    def countdown(self):
+        if not self.windows:
+            return
+        if self.left <= 0:
+            self.on_done()
+            return
+        self.counts = [c for c in self.counts if c.winfo_exists()]
+        for c in self.counts:
+            c.config(text=fmt(self.left))
+        self.left -= 1
+        self.main.after(1000, self.countdown)

@@ -2,9 +2,10 @@
 
 La extensión de GNOME «vigía» (`gnome-extension/`) deja una captura reducida de la ventana al frente
 cuando es de riesgo (navegadores…) en $XDG_RUNTIME_DIR/pomodoro-vigia. Aquí se manda al servidor, que la
-revisa con NudeNet en memoria, y se borra. Según lo que vea:
-  - explícito → cierra la ventana, bloquea la sesión, cancela los desbloqueos del teléfono y avisa al bot;
-  - sugerente → aviso; a la tercera en 2 min, lo mismo que explícito.
+revisa con NudeNet en memoria, y se borra. Lo que vea sube la escalera de castigos de la app
+(`controller/enforce.py`): sugerente empieza con un aviso; explícito, cerrando la pestaña. Si sigues, se
+minimiza, se cierra, se bloquea la sesión y al final se apaga la compu. Con explícito, o desde que se cierra
+la app, también se cancelan los desbloqueos del teléfono y se avisa al bot.
 Sin `sync.json` (servidor) no hace nada.
 """
 import json
@@ -17,15 +18,11 @@ import urllib.error
 import urllib.request
 
 from ..paths import PROJECT_DIR
-from .system import lock_session, notify
 
 UUID = "vigia@mauriciojuanes.com"
 EXT_SRC = os.path.join(PROJECT_DIR, "gnome-extension", UUID)
 EXT_DST = os.path.expanduser(f"~/.local/share/gnome-shell/extensions/{UUID}")
 SHOT_DIR = os.path.join(os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}"), "pomodoro-vigia")
-SUGGESTIVE_LIMIT = 3
-SUGGESTIVE_WINDOW = 120
-COOLDOWN = 30
 
 
 def _gsettings(*args):
@@ -65,8 +62,6 @@ class ScreenWatch:
         self.app = app
         self.settings = settings      # {"url", "token"} del servidor, o None
         self.last_ts = 0
-        self.cooldown_until = 0
-        self.suggestive = []
         self.last_ensure = 0
         if settings:
             threading.Thread(target=self._loop, daemon=True).start()
@@ -100,7 +95,7 @@ class ScreenWatch:
         except (OSError, ValueError):
             return
         os.remove(shot_path)   # no se queda en disco
-        if meta.get("ts", 0) <= self.last_ts or time.time() < self.cooldown_until:
+        if meta.get("ts", 0) <= self.last_ts:
             return
         self.last_ts = meta["ts"]
         level = self._req("POST", "/api/screen", jpeg, "image/jpeg").get("level", "none")
@@ -109,27 +104,15 @@ class ScreenWatch:
 
     # ---------- hilo de la interfaz ----------
     def _handle(self, level, app, title):
-        name = app.split(".")[-1].capitalize()
-        if level == "suggestive":
-            now = time.time()
-            self.suggestive = [t for t in self.suggestive if now - t < SUGGESTIVE_WINDOW] + [now]
-            if len(self.suggestive) < SUGGESTIVE_LIMIT:
-                notify(f"👀 Contenido sugerente en {name}", "Sal de ahí antes de que escale.", urgent=True)
-                return
-            self.suggestive = []
-        self.cooldown_until = time.time() + COOLDOWN
-        self._write_action("close")
-        lock_session()
-        notify(f"🚫 Contenido {'explícito' if level == 'explicit' else 'sugerente'} en {name}",
-               "Cerré la ventana y bloqueé la sesión. Respira, levántate y sal del cuarto.", urgent=True)
-        threading.Thread(target=self._report, args=(level, app, name), daemon=True).start()
+        self.content_hit(level, app)
 
-    def _write_action(self, action):
-        try:
-            with open(os.path.join(SHOT_DIR, "action"), "w") as f:
-                f.write(action)
-        except OSError:
-            pass
+    def content_hit(self, level, app, source="imagen"):
+        """Algo de riesgo al frente (imagen o texto): sube la escalera; con explícito o al cerrar la app, el
+        bot se entera y se cancelan los desbloqueos del teléfono."""
+        name = app.split(".")[-1].capitalize()
+        step = self.app.ladder_hit("content", name, start=2 if level == "explicit" else 0, severity=level)
+        if step is not None and self.settings and (level == "explicit" or step >= 3):
+            threading.Thread(target=self._report, args=(level, app, name, source), daemon=True).start()
 
     def report_skip(self, action, reason):
         """Te saltaste el pomodoro (con justificación): el bot se entera."""
@@ -144,11 +127,12 @@ class ScreenWatch:
         except (OSError, ValueError, urllib.error.URLError):
             pass
 
-    def _report(self, level, app, name):
+    def _report(self, level, app, name, source="imagen"):
         """Avisa al bot (alerta) y cancela los desbloqueos vigentes del teléfono."""
         try:
             self._req("POST", "/api/alert", json.dumps({"source": "desktop", "level": level, "app": app,
-                                                        "app_name": name, "action": "lock"}).encode())
+                                                        "app_name": name, "action": "lock",
+                                                        "reason": f"detectado por {source}"}).encode())
             blocks = (self._req("GET", "/api/state?source=desktop") or {}).get("blocks")
             if blocks and blocks.get("relocks"):
                 apps = set(blocks.get("blocked_apps") or []) | {r["pkg"] for r in blocks["relocks"]

@@ -5,7 +5,8 @@ corre de inmediato: queda «armado» y arranca solo en cuanto te ve trabajando (
 frente y usando el teclado o el mouse unos segundos). Mientras corre, si te vas o te distraes, se pausa
 y ese rato no cuenta. Si tardas en arrancar, la presión sube por escalones (`focus_nudge_min`):
   1. aviso en la compu y en el teléfono;
-  2. teléfono estricto (te saca de todo lo que no sea esencial) y en la compu se minimiza lo que distrae;
+  2. teléfono estricto (te saca de todo lo que no sea esencial) y en la compu lo que distrae sube la
+     escalera de castigos (`controller/enforce.py`: aviso, minimizar, cerrar pestaña, cerrar app…);
   3. en la compu, pantalla completa que te pide arrancar (o decir en qué estás trabajando lejos de ella);
      el teléfono se bloquea en cuanto lo usas.
 El nivel viaja al teléfono dentro del estado del temporizador (`arming`, `nudge`).
@@ -39,7 +40,6 @@ class FocusMixin:
         self.focus_key = None
         self.focus_pass_until = 0    # dijiste que trabajas lejos de la compu y se te creyó
         self.last_focus = time.time()
-        self.last_minimize = 0
         self.last_stats_save = time.time()
         self.dwell = (None, 0)
 
@@ -110,7 +110,7 @@ class FocusMixin:
                    + (f" Tardaste {fmt(late)} en arrancar." if late > 60 else ""))
         self.render()
 
-    def auto_pause(self, reason, credit):
+    def auto_pause(self, reason, credit, quiet=False):
         """Te fuiste o te distrajiste: se pausa y ese rato se devuelve al reloj (no cuenta)."""
         now = time.time()
         credit = max(0.0, min(credit, self.phase_total - (self.end_time - now)))
@@ -126,8 +126,9 @@ class FocusMixin:
                                          f"Sigue solo en cuanto regreses a {what}.")
         else:
             self.arm(level=2)
-            notify("⏸ Pausé el pomodoro", f"Llevabas {fmt(credit)} en {self.focus_what or 'otra cosa'}: no cuenta. "
-                                         f"Sigue solo en cuanto vuelvas a {what}.", urgent=True)
+            if not quiet:
+                notify("⏸ Pausé el pomodoro", f"Llevabas {fmt(credit)} en {self.focus_what or 'otra cosa'}: no cuenta. "
+                                             f"Sigue solo en cuanto vuelvas a {what}.", urgent=True)
         self.render()
 
     # ---------- cada segundo ----------
@@ -190,15 +191,10 @@ class FocusMixin:
     def _focus_running(self, v, s, step, aid):
         if v == "distract" and s["idle"] < PRESENT_SEC:
             self.distract_secs += step
-            limit = self.cfg["focus_distract_sec"]
-            if not self.distract_warned and self.distract_secs >= limit / 2:
-                self.distract_warned = True
-                notify(f"👀 {self.focus_what or 'Eso'} no es {act_label(self.cfg, aid)}",
-                       f"En {fmt(limit - self.distract_secs)} lo minimizo y el pomodoro se pausa (ese rato no cuenta). "
-                       "Si sí es trabajo, márcalo en la ventana del Pomodoro.")
-            if self.distract_secs >= limit:
-                self.presence.minimize_focused()
-                self.auto_pause("distract", self.distract_secs)
+            if self.distract_secs >= self.cfg["focus_distract_sec"] / 2:
+                st = self.ladder_hit("distract", self.focus_what or "Eso")
+                if st is not None and st >= 1:   # se minimizó (o más): el pomodoro se pausa y ese rato no cuenta
+                    self.auto_pause("distract", self.distract_secs, quiet=True)
             return
         if v == "work":
             self.distract_secs = max(0.0, self.distract_secs - step / 2)
@@ -232,10 +228,8 @@ class FocusMixin:
         if level > self.nudge:
             self.nudge = level
             self.escalate(level, late, aid)
-        if self.nudge >= 2 and v == "distract" and present and now - self.last_minimize > 30:
-            self.last_minimize = now
-            self.presence.minimize_focused()
-            notify("🙅 Eso no es lo que toca", f"Ahora toca {act_label(self.cfg, aid)}. Lo minimicé.")
+        if self.nudge >= 2 and v == "distract" and present:
+            self.ladder_hit("distract", self.focus_what or "Eso")
         if isinstance(self.overlay, NudgeScreen):
             self.overlay.update(late)
         elif self.nudge >= 3 and present:
@@ -262,6 +256,8 @@ class FocusMixin:
             return
         self.judge.learn(self.focus_key, verdict)
         self.distract_secs, self.distract_warned = 0.0, False
+        if verdict == "work":
+            self.ladders["distract"].reset()
         notify("👍 Anotado", f"«{self.focus_what}» cuenta como {'trabajo' if verdict == 'work' else 'distracción'} "
                             f"en {act_label(self.cfg, cell_activity(self.cfg, dt.datetime.now()))}.")
         self.render()
@@ -276,5 +272,5 @@ class FocusMixin:
         """Lo que se manda al servidor con la señal de vida (para el bot)."""
         return {"focus": {"state": self.focus_state, "what": self.focus_what, "nudge": self.nudge,
                           "arming_since": self.arming_since, "today": self.focus_stats_today(),
-                          "llm_calls": self.judge.calls_today(),
+                          "llm_calls": self.judge.calls_today(), "ladder": self.ladder_info(),
                           "offpc": (self.offpc or {}).get("what") if (self.offpc or {}).get("state") == "active" else None}}

@@ -41,6 +41,11 @@ SYS_OFFPC = ("Eres el sensor de un pomodoro. La persona se alejó de la compu en
              "razonable (5–60); 4) qué apps del teléfono se valen, de: messaging, work, maps, finance, reading, "
              "education, shopping, audio (vacío si ninguna). Los pasos caminados ayudan a ver si cuadra. "
              "Responde solo una línea «P none 20 maps,work» o «D».")
+SYS_RISK = ("Eres el filtro anti-recaídas de una persona que está dejando la pornografía y el contenido sexual. "
+            "Te paso el título de una ventana y un fragmento del texto que se ve en ella. Responde una sola letra: "
+            "X = sexual explícito; S = sugerente: erótico, coqueteo o rol romántico/sexual (incluido chatear con una "
+            "«novia» o una celebridad de IA), fotos provocativas; N = normal (noticias, salud, educación sexual seria, "
+            "trabajo, compras normales).")
 SYS_INTENT = ("Eres el sensor de un pomodoro. La persona dice qué está haciendo lejos de la pantalla. Decide si "
               "es una forma legítima de hacer la actividad de su horario (P) o una excusa / otra cosa (D). "
               "Responde solo la letra.")
@@ -147,6 +152,14 @@ class Judge:
             return
         self.q.put(("offpc", key, activity, statement, away_min, steps, callback))
 
+    def ask_risk(self, title, text, callback):
+        """¿Este texto es de riesgo? callback("explicit" | "suggestive" | None) en el hilo de la interfaz.
+        Sin IA disponible (o sin cuota) regresa None: lo dudoso no se castiga."""
+        if not self._budget_ok():
+            self.app.after(0, lambda: callback(None))
+            return
+        self.q.put(("risk", title, text, callback))
+
     # ---------- hilo aparte ----------
     @staticmethod
     def _bin():
@@ -181,7 +194,7 @@ class Judge:
             out = r.stdout.strip() if r.returncode == 0 else ""
         except (OSError, subprocess.TimeoutExpired):
             out = ""
-        if not re.search(r"\b[PND]\b", out):
+        if not re.search(r"\b[PNDXS]\b", out):
             self.failed_until = time.time() + RETRY_SEC
         return out
 
@@ -194,6 +207,9 @@ class Judge:
             if first[0] == "offpc":
                 self._offpc(*first[1:])
                 continue
+            if first[0] == "risk":
+                self._risk(*first[1:])
+                continue
             batch = [first]
             time.sleep(3)   # juntar lo que llegue casi al mismo tiempo
             while len(batch) < BATCH:
@@ -201,7 +217,7 @@ class Judge:
                     item = self.q.get_nowait()
                 except queue.Empty:
                     break
-                if item[0] in ("intent", "offpc"):
+                if item[0] in ("intent", "offpc", "risk"):
                     self.q.put(item)
                     break
                 batch.append(item)
@@ -227,6 +243,13 @@ class Judge:
         self._save()
         verdict = True if out.startswith("P") else False if out.startswith("D") else None
         self.app.after(0, lambda: callback(verdict))
+
+    def _risk(self, title, text, callback):
+        out = self._call(SYS_RISK, f"Título: {title[:150]}\nTexto: {text[:900]}")
+        self._save()
+        m = re.search(r"\b([XSN])\b", out)
+        level = {"X": "explicit", "S": "suggestive"}.get(m.group(1)) if m else None
+        self.app.after(0, lambda: callback(level))
 
     def _offpc(self, key, activity, statement, away_min, steps, callback):
         prompt = f"Actividad: {activity}\nLleva fuera: {away_min} min\nDice: {statement[:200]}"

@@ -55,24 +55,30 @@ class Presence:
                 app = d.get("app_id") or d.get("app") or ""
                 return {"ts": now, "idle": d["idle_ms"] / 1000, "app": app.lower(), "title": d.get("title") or "",
                         "locked": bool(d.get("locked")), "fullscreen": bool(d.get("fullscreen")),
-                        "window": True}
+                        "window": True, "ext_v": d.get("v", 1)}
         except (OSError, ValueError):
             pass
         idle = _dbus_idle()
         if idle is None:
             return None
         return {"ts": now, "idle": idle, "app": "", "title": "", "locked": False, "fullscreen": False,
-                "window": False}
+                "window": False, "ext_v": 0}
 
     def fresh(self):
         s = self.latest
         return s if s and time.time() - s["ts"] < STALE_SEC else None
 
-    @staticmethod
-    def minimize_focused():
-        """Le pide a la extensión que minimice la ventana al frente."""
+    def act(self, action):
+        """Le pide a la extensión algo con la ventana al frente: "minimize", "close-tab" o "close-app".
+        Una extensión vieja (antes de volver a iniciar sesión) solo entiende "minimize" y "close"."""
+        s = self.latest
+        if action != "minimize" and (not s or s.get("ext_v", 1) < 2):
+            action = "close"
         try:
             with open(ACTION_FILE, "w") as f:
-                f.write("minimize")
+                f.write(action)
         except OSError:
             pass
+
+    def minimize_focused(self):
+        self.act("minimize")

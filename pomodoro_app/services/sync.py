@@ -23,7 +23,8 @@ SYNC_KEYS = ("work_min", "short_min", "long_min", "cycles", "warn_sec", "auto_st
              # Faro (los usa sobre todo el teléfono; si no viajan, la compu los borraría al reenviar la config)
              "mind_on_unlock", "mind_unlock_every_min", "mind_show_sec", "mind_on_break", "phone_break_lock",
              "break_allow", "wa_guard", "wa_budget_min", "wa_groups_ok", "wa_groups_allowed", "tasks_firm",
-             "tasks_allday_hour", "auto_update", "phone_app_categories")
+             "tasks_allday_hour", "auto_update", "phone_app_categories", "phone_long_flex",
+             "phone_long_block_min")
 ALIVE_SEC = 120  # un dispositivo cuenta como "vivo" si habló con el servidor hace menos de esto
 SOURCE = "desktop"
 

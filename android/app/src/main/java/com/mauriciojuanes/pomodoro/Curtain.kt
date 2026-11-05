@@ -229,6 +229,10 @@ class CurtainActivity : ComponentActivity() {
                 Small("☕ ${t.title}")
                 Text(Engine.fmt(Engine.remaining()), fontSize = 64.sp, fontWeight = FontWeight.Bold, color = TextMain)
                 Small("Lejos de la pantalla: levántate, estírate, toma agua.")
+                Curtain.longPlan()?.let { (locked, left) ->
+                    if (locked && left < Engine.remaining() - 1)
+                        Small("📱 El teléfono se libera en ${Engine.fmt(left)}")
+                }
                 Box(Modifier.padding(vertical = 26.dp)) { Phrase(m, 24) }
                 Action("📞 Llamar") { open(Intent(Intent.ACTION_DIAL)) }
                 if (Curtain.breakAllows(Apps.MESSAGING)) Action("💬 WhatsApp") {
@@ -473,7 +477,28 @@ object Curtain {
         if (!Engine.cfg.optBoolean("phone_break_lock", true) || !t.running) return false
         if (t.phase != "short" && t.phase != "long") return false
         if (Engine.remaining() <= 0) return false
+        if (t.phase == "long" && longPlan()?.first == false) return false
         return Policy.at().phone
+    }
+
+    /**
+     * El descanso largo va por tramos en vez de tapar todo: tapado, libre, tapado… Cada tramo dura un tercio
+     * del descanso (entre 5 y 10 min, o `phone_long_block_min`), así uno de 30 min queda 10 tapado / 10 libre /
+     * 10 tapado. Regresa (¿tapado ahora?, segundos para el siguiente cambio), o null si no aplica.
+     */
+    fun longPlan(): Pair<Boolean, Double>? {
+        val t = Engine.timer
+        if (t.phase != "long" || !t.running || !Engine.cfg.optBoolean("phone_long_flex", true)) return null
+        val rem = Engine.remaining()
+        if (rem <= 0 || t.total <= 0) return null
+        val cfgMin = Engine.cfg.optDouble("phone_long_block_min", 0.0)
+        val block = if (cfgMin > 0) cfgMin * 60 else (t.total / 3).coerceIn(300.0, 600.0)
+        val elapsed = (t.total - rem).coerceAtLeast(0.0)
+        var idx = (elapsed / block).toInt()
+        // Un último tramo libre de menos de 3 min no vale la pena: se queda tapado hasta el final.
+        if (idx % 2 == 1 && t.total - idx * block < 180) idx++
+        val locked = idx % 2 == 0
+        return locked to minOf((idx + 1) * block - elapsed, rem)
     }
 
     fun breakAllows(cat: String): Boolean {
