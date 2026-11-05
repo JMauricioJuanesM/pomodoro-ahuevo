@@ -198,12 +198,21 @@ class CurtainActivity : ComponentActivity() {
     private fun MindCurtain(id: String) {
         val m = remember(id) { Mind.deck().firstOrNull { it.optString("id") == id } ?: Mind.pick() }
         var reacted by remember { mutableStateOf(false) }
+        // Con `mind_until_touch` (lo normal) la frase se queda hasta que la toques; los primeros segundos un
+        // toque no la quita, para que el mismo gesto de desbloquear no se la lleve sin leerla.
+        val untilTouch = Engine.cfg.optBoolean("mind_until_touch", true)
+        var canClose by remember(m) { mutableStateOf(!untilTouch) }
         LaunchedEffect(m) {
-            delay(Engine.cfg.optLong("mind_show_sec", 7) * 1000)
-            if (!reacted) finish()
+            if (untilTouch) {
+                delay(Engine.cfg.optLong("mind_min_sec", 3) * 1000)
+                canClose = true
+            } else {
+                delay(Engine.cfg.optLong("mind_show_sec", 7) * 1000)
+                if (!reacted) finish()
+            }
         }
         Backdrop(Color(0xFF1B2333)) {
-            Column(Modifier.fillMaxSize().clickable(MutableInteractionSource(), null) { finish() },
+            Column(Modifier.fillMaxSize().clickable(MutableInteractionSource(), null) { if (canClose) finish() },
                 horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
                 if (m?.optString("anim") == "breath") Breath()
                 Phrase(m)
@@ -216,6 +225,8 @@ class CurtainActivity : ComponentActivity() {
                         }.padding(10.dp))
                     }
                 }
+                if (untilTouch && canClose) Text("Toca para seguir", fontSize = 13.sp, color = Muted,
+                    modifier = Modifier.padding(top = 18.dp))
             }
         }
     }

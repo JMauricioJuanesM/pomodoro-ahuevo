@@ -21,7 +21,8 @@ SYNC_KEYS = ("work_min", "short_min", "long_min", "cycles", "warn_sec", "auto_st
              "phone_work_warn_min", "phone_work_lock_min", "phone_dnd", "phone_distract", "phone_distracting",
              "phone_essential", "focus_sensor", "skip_friction", "phone_skips_per_day",
              # Faro (los usa sobre todo el teléfono; si no viajan, la compu los borraría al reenviar la config)
-             "mind_on_unlock", "mind_unlock_every_min", "mind_show_sec", "mind_on_break", "phone_break_lock",
+             "mind_on_unlock", "mind_unlock_every_min", "mind_show_sec", "mind_until_touch",
+             "mind_min_sec", "mind_on_break", "phone_break_lock",
              "break_allow", "wa_guard", "wa_budget_min", "wa_groups_ok", "wa_groups_allowed", "tasks_firm",
              "tasks_allday_hour", "auto_update", "phone_app_categories", "phone_long_flex",
              "phone_long_block_min")
